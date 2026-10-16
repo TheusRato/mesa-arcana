@@ -73,6 +73,8 @@
     let cloudSaveTimer = null;
     let cloudRefreshTimer = null;
     let isRefreshingCloud = false;
+    let isSavingCloud = false;
+    let cloudChangeVersion = 0;
     let activeMessageNpc = "";
     let activeMessageTargetId = "";
     let activeConversationId = "";

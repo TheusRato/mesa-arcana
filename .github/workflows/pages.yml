@@ -28,7 +28,7 @@ jobs:
       - name: Build
         run: node tools/build.mjs
       - name: Check structure
-        run: node --test tests/structure.test.mjs
+        run: node --test tests/*.test.mjs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

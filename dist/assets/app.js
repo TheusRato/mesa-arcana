@@ -73,6 +73,8 @@
     let cloudSaveTimer = null;
     let cloudRefreshTimer = null;
     let isRefreshingCloud = false;
+    let isSavingCloud = false;
+    let cloudChangeVersion = 0;
     let activeMessageNpc = "";
     let activeMessageTargetId = "";
     let activeConversationId = "";
@@ -1582,6 +1584,7 @@
     }
 
     async function saveOnlineTable() {
+      if (isSavingCloud) return;
       const client = getSupabaseClient();
       const activeTable = getOnlineTableOrWarn();
       if (!client || !activeTable) return;
@@ -1595,6 +1598,8 @@
         return;
       }
       setSupabaseStatus(activeTable.role === "master" ? "Salvando na nuvem..." : "Enviando alteracoes...");
+      const saveVersion = cloudChangeVersion;
+      isSavingCloud = true;
       try {
         let nextData = activeTable.role === "master" ? await cloudDataForMaster(activeTable, data) : normalizeData(data);
         if (activeTable.role === "player") {
@@ -1615,6 +1620,7 @@
           .update(payload)
           .eq("id", activeTable.onlineId);
         if (error) throw error;
+        if (saveVersion === cloudChangeVersion) activeTable.pendingCloudSave = false;
         activeTable.data = activeTable.role === "player" ? playerSafeData(nextData) : normalizeData(data);
         activeTable.updatedAt = new Date().toISOString();
         saveTableRegistry();
@@ -1622,6 +1628,9 @@
       } catch (error) {
         console.warn("Erro ao salvar mesa na nuvem.", error);
         setSupabaseStatus("Erro ao salvar na nuvem", "error");
+      } finally {
+        isSavingCloud = false;
+        if (cloudChangeVersion !== saveVersion) scheduleCloudTableSave();
       }
     }
 
@@ -1673,14 +1682,18 @@
         if (!localCharacter || !owner) return remoteCharacter;
         return {
           ...remoteCharacter,
+          ...([remoteCharacter.character, remoteCharacter.name].some(value => String(value || "").trim().toLowerCase() === owner.trim().toLowerCase()) && remoteCharacter.kind !== "NPC"
+            ? { cover: localCharacter.cover || "", sheetImage: localCharacter.sheetImage || "" }
+            : {}),
           playerAnnotations: mergePlayerTextMap(remoteCharacter.playerAnnotations, localCharacter.playerAnnotations, owner)
         };
       });
     }
 
     function mergePlayerProfiles(remoteProfiles, localProfiles) {
+      const owner = currentPlayerOwner();
       const byName = new Map();
-      [...safeList(remoteProfiles), ...safeList(localProfiles)].forEach(profile => {
+      [...safeList(remoteProfiles), ...safeList(localProfiles).filter(profile => profile.name === owner)].forEach(profile => {
         const name = String(profile.name || "").trim();
         if (!name) return;
         const current = byName.get(name) || { id: profile.id || createId(), name, pinHash: "", cover: "", sheetImage: "" };
@@ -1708,6 +1721,12 @@
       const client = getSupabaseClient();
       const activeTable = getOnlineTableOrWarn();
       if (!client || !activeTable || !activeTable.onlineId || isRefreshingCloud) return false;
+      if (isSavingCloud) return false;
+      if (activeTable.pendingCloudSave) {
+        if (!force) return false;
+        await saveOnlineTable();
+        if (activeTable.pendingCloudSave) return false;
+      }
       isRefreshingCloud = true;
       if (!silent) setSupabaseStatus("Carregando da nuvem...");
       try {
@@ -1770,6 +1789,9 @@
         setSupabaseStatus("Crie a mesa online para auto-salvar", "local");
         return;
       }
+      cloudChangeVersion++;
+      activeTable.pendingCloudSave = true;
+      saveTableRegistry();
       window.clearTimeout(cloudSaveTimer);
       setSupabaseStatus(activeTable.role === "master" ? "Salvando na nuvem..." : "Enviando alteracoes...");
       cloudSaveTimer = window.setTimeout(saveOnlineTable, 1200);
@@ -4529,10 +4551,26 @@
     initializeApp();
 
     if ("serviceWorker" in navigator && ["https:", "http:"].includes(window.location.protocol)) {
+      const hadController = Boolean(navigator.serviceWorker.controller);
+      let reloadingForUpdate = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (hadController && !reloadingForUpdate) {
+          reloadingForUpdate = true;
+          window.location.reload();
+        }
+      });
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("./service-worker.js").catch(error => {
+        navigator.serviceWorker.register("./service-worker.js", { updateViaCache: "none" }).catch(error => {
           console.warn("Não foi possível ativar o modo app/offline.", error);
         });
       });
     }
+
+    function refreshAfterResume() {
+      if (document.visibilityState === "hidden") return;
+      if ("serviceWorker" in navigator) navigator.serviceWorker.getRegistration().then(registration => registration?.update()).catch(() => {});
+      if (getActiveTable()?.onlineId) refreshOnlineTable({ force: true, silent: true });
+    }
+    window.addEventListener("online", refreshAfterResume);
+    document.addEventListener("visibilitychange", refreshAfterResume);
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = "mesa-arcana-v83";
+const CACHE_NAME = "mesa-arcana-v84";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -21,21 +21,30 @@ self.addEventListener("install", event => {
 self.addEventListener("activate", event => {
   event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))))
+      .then(keys => Promise.all(keys.filter(key => key.startsWith("mesa-arcana-") && key !== CACHE_NAME).map(key => caches.delete(key))))
       .then(() => self.clients.claim())
   );
 });
 
 self.addEventListener("fetch", event => {
   if (event.request.method !== "GET") return;
-
+  const url = new URL(event.request.url);
+  // Cloud requests must always reach the server, never the offline cache.
+  if (url.origin !== self.location.origin) return;
+  const shellUrls = APP_SHELL.map(file => new URL(file, self.registration.scope).href);
+  if (!shellUrls.includes(url.href)) return;
   event.respondWith(
-    caches.match(event.request)
-      .then(cached => cached || fetch(event.request).then(response => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+      try {
+        const response = await fetch(event.request, { cache: "no-store" });
+        if (response.ok && response.type !== "opaque") await cache.put(event.request, response.clone());
         return response;
-      }))
-      .catch(() => caches.match("./index.html"))
+      } catch (error) {
+        const cached = await cache.match(event.request);
+        if (cached) return cached;
+        throw error;
+      }
+    })()
   );
 });
