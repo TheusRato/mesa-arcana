@@ -1,0 +1,1079 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mesa Arcana</title>
+  <meta name="description" content="Organizador de campanha com diário de bordo, personagens, área do jogador, mundo compartilhado e Escudo do Mestre privado.">
+  <meta name="theme-color" content="#202638">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Mesa Arcana">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231d2333'/%3E%3Cpath d='M18 15h22c4 0 7 3 7 7v27H20c-3 0-5-2-5-5V18c0-2 1-3 3-3z' fill='%23f0c36a'/%3E%3Cpath d='M22 21h18M22 29h16M22 37h20' stroke='%231d2333' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M47 22l-9 9 3 3 9-9-3-3z' fill='%2384d2c5'/%3E%3C/svg%3E">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./assets/theme.js"></script>
+  <link rel="stylesheet" href="./assets/app.css">
+</head>
+<body>
+  <div class="launcher" id="launcher">
+    <div class="launcher-shell">
+      <section class="launcher-hero">
+        <div class="launcher-mark">M</div>
+        <h1>Mesa Arcana</h1>
+        <p>Crie sua mesa como Mestre, ou entre em uma mesa existente usando o convite recebido.</p>
+        <p class="sync-status error hidden" id="startupError" style="align-items:flex-start; white-space:normal; line-height:1.4; padding:10px; margin-top:14px"></p>
+        <div class="launcher-actions">
+          <button class="btn primary" id="createTableBtn">Criar uma Mesa</button>
+          <button class="btn" id="joinTableBtn">Entrar em uma Mesa</button>
+        </div>
+      </section>
+      <section class="launcher-list">
+        <h2>Minhas mesas</h2>
+        <p>Mesas já salvas neste dispositivo aparecem aqui para você abrir rápido.</p>
+        <div class="table-list" id="tableList"></div>
+      </section>
+    </div>
+  </div>
+
+  <div class="app hidden" id="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">M</div>
+        <div>
+          <strong>Mesa Arcana</strong>
+          <span>organizador de campanha</span>
+          <small class="current-table" id="currentTableLabel"></small>
+        </div>
+      </div>
+      <nav class="nav" aria-label="Seções do app">
+        <button class="active" data-view="dashboard" title="Campanha">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          Campanha
+        </button>
+        <button data-view="master" title="Escudo do Mestre">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 4v6c0 4-3 7-7 8-4-1-7-4-7-8V7l7-4z"/><path d="M9 12l2 2 4-5"/></svg>
+          Escudo do Mestre
+        </button>
+        <button data-view="players" title="Personagens">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Personagens
+        </button>
+        <button data-view="messages" title="Mensagens">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>
+          Mensagens
+        </button>
+        <div class="nav-player-menu" id="navPlayerMenu">
+          <button data-view="board" title="Jogador">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h6M7 16h8"/></svg>
+            Jogador
+          </button>
+          <div class="player-nav-submenu hidden" id="playerNavSubmenu"></div>
+        </div>
+        <button data-view="library" title="Mundo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          Mundo
+        </button>
+        <button data-view="settings" title="Configurações">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.13.37.35.7.64.96.3.26.68.4 1.08.4H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg>
+          Config.
+        </button>
+        <div class="mobile-more-container">
+          <button id="mobileMoreToggle" type="button" title="Mais" aria-expanded="false" aria-controls="mobileMoreMenu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>Mais</button>
+          <div id="mobileMoreMenu" class="mobile-more-menu hidden" aria-label="Outras seções"></div>
+        </div>
+      </nav>
+      <span id="nextSession" class="hidden">Sem data</span>
+    </aside>
+
+    <main>
+      <div class="topbar">
+        <div class="title-block">
+          <h1 id="pageTitle">Campanha</h1>
+          <p id="pageIntro">O estado atual da história, os próximos focos e o ritmo da sessão.</p>
+        </div>
+
+      </div>
+
+      <section id="view-dashboard" class="view">
+        <div class="panel">
+          <div class="section-head">
+            <div>
+              <h2>Diário de bordo</h2>
+              <p>Registre cada sessão da campanha e abra o item para escrever o seu diário.</p>
+            </div>
+            <button class="add-character-btn" id="addSessionBtn" title="Adicionar sessão" aria-label="Adicionar sessão">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+            </button>
+          </div>
+          <div id="sessionList" class="session-list"></div>
+
+        <div class="hidden" aria-hidden="true">
+          <input id="campaignName">
+          <textarea id="campaignSummary"></textarea>
+          <input id="sessionDate" type="date">
+          <select id="sessionTone"><option>Investigação</option></select>
+          <span id="statHooks"></span>
+          <span id="statSecrets"></span>
+          <span id="statPlayers"></span>
+          <span id="statShared"></span>
+          <div id="focusList"></div>
+        </div>
+        </div>
+      </section>
+
+      <section id="view-master" class="view hidden">
+        <div class="master-section-tabs" id="masterSectionTabs" aria-label="Menu do mestre">
+          <button class="active" type="button" data-master-tab="secrets" title="Segredos">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l7 4v6c0 4-3 7-7 8-4-1-7-4-7-8V7l7-4z"/><path d="M9.5 12.5l1.5 1.5 3.5-4"/></svg>
+            <span>Segredos</span>
+          </button>
+          <button type="button" data-master-tab="npcs" title="NPCs ocultos">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/><path d="M16 11l3 3"/></svg>
+            <span>NPCs</span>
+          </button>
+          <button type="button" data-master-tab="locations" title="Locais">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 21s7-5.3 7-11a7 7 0 1 0-14 0c0 5.7 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
+            <span>Locais</span>
+          </button>
+          <button type="button" data-master-tab="clues" title="Pistas">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M8 14a6 6 0 1 1 8 0c-.7.6-1 1.4-1 2H9c0-.6-.3-1.4-1-2z"/></svg>
+            <span>Pistas</span>
+          </button>
+          <button type="button" data-master-tab="next" title="Próxima sessão">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M16 3v4M8 3v4M4 11h16"/><path d="M9 16h6"/></svg>
+            <span>Próxima</span>
+          </button>
+          <button type="button" data-master-tab="files" title="Arquivos privados">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 15h8M8 18h5"/></svg>
+            <span>Arquivos</span>
+          </button>
+        </div>
+        <div class="panel" data-master-section="notes">
+          <div class="section-head">
+            <div>
+              <h2 id="masterSectionTitle">Segredos</h2>
+              <p id="masterSectionIntro">Verdades ocultas, reviravoltas e informações que só o mestre sabe.</p>
+            </div>
+            <button class="add-character-btn hidden" id="openMasterClue" title="Adicionar pista" aria-label="Adicionar pista"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg></button>
+          </div>
+            <div class="form hidden" id="masterInlineForm">
+              <label>
+                Título
+                <input id="masterTitle" placeholder="Ex.: O patrono está mentindo">
+              </label>
+              <label>
+                Nota
+                <textarea id="masterBody" placeholder="Escreva a verdade por trás da cena, pistas, estatísticas rápidas ou consequências."></textarea>
+              </label>
+              <button class="btn primary" id="addMaster">Adicionar segredo</button>
+            </div>
+            <div id="masterList" class="list"></div>
+        </div>
+        <div class="panel hidden" data-master-section="npcs">
+          <div class="section-head">
+            <div>
+              <h2>Fichas dos NPCs</h2>
+              <p>Arquivo privado do mestre para habilidades, passado, entrada em cena e pontos fortes ou fracos.</p>
+            </div>
+            <button class="add-character-btn" id="openMasterNpcForm" type="button" title="Adicionar NPC" aria-label="Adicionar NPC">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+            </button>
+          </div>
+          <label>Mostrar<select id="masterNpcFilter"><option value="all">Todos</option><option value="planned">Planejados</option><option value="revealed">Revelados</option></select></label>
+          <div id="masterNpcList" class="list" style="margin-top:14px"></div>
+        </div>
+        <div class="panel hidden" data-master-section="files">
+          <div class="section-head">
+            <div>
+              <h2>Arquivos privados</h2>
+              <p>Imagens, pistas visuais, mapas e referências que só o mestre pode consultar.</p>
+            </div>
+            <button class="add-character-btn" id="openMasterFileModal" title="Adicionar arquivo" aria-label="Adicionar arquivo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg></button>
+          </div>
+          <div id="masterFileList" class="list" style="margin-top:14px"></div>
+        </div>
+      </section>
+
+      <div class="modal-backdrop hidden" id="masterFileModal" role="dialog" aria-modal="true" aria-labelledby="masterFileModalTitle">
+        <article class="character-modal">
+          <div class="modal-head"><h2 id="masterFileModalTitle">Adicionar arquivo</h2><button class="icon-btn" id="closeMasterFileModal" title="Fechar" aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+          <div class="form" id="masterFileForm">
+            <label>
+              Título
+              <input id="masterFileTitle" placeholder="Ex.: Mapa secreto da escola">
+            </label>
+            <label>
+              Observação
+              <textarea id="masterFileNotes" placeholder="Anote onde usar, o que revelar ou qual detalhe importa."></textarea>
+            </label>
+            <label>
+              Imagem
+              <input id="masterFileInput" type="file" accept="image/*">
+            </label>
+            <img class="modal-cover hidden" id="masterFilePreview" alt="Prévia do arquivo privado">
+            <button class="btn primary" id="addMasterFile" type="button">Adicionar arquivo</button>
+          </div>
+          <div class="modal-actions"><button class="btn" id="cancelMasterFileModal">Cancelar</button></div>
+        </article>
+      </div>
+
+      <section id="view-players" class="view hidden">
+        <div class="panel">
+          <div class="section-head">
+            <div>
+              <h2>Elenco da campanha</h2>
+              <p>Registre personagens dos jogadores e NPCs importantes no mesmo lugar.</p>
+            </div>
+            <button class="add-character-btn" id="openAddCharacterModal" title="Adicionar personagem" aria-label="Adicionar personagem">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+            </button>
+          </div>
+        </div>
+        <div id="playerGrid" class="player-grid" style="margin-top:16px"></div>
+      </section>
+
+      <section id="view-messages" class="view hidden">
+        <div class="panel message-app" id="messageApp">
+          <div class="messages-shell">
+            <aside class="conversation-list">
+              <div class="conversation-list-head">
+                <div>
+                  <h3>Conversas</h3>
+                  <small>NPCs da mesa</small>
+                </div>
+                <span class="sync-status local" id="messageStatus">Escolha uma conversa</span>
+              </div>
+              <div id="conversationList"></div>
+              <button class="message-floating-add hidden" id="openGroupModal" title="Criar grupo" aria-label="Criar grupo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+              </button>
+            </aside>
+            <section class="message-panel">
+              <div class="message-chat-head">
+                <button class="message-back" id="messageBackBtn" title="Voltar para conversas" aria-label="Voltar para conversas">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M15 18l-6-6 6-6"/></svg>
+                </button>
+                <div>
+                  <h3 id="messageTitle">Nenhuma conversa aberta</h3>
+                  <p id="messageIntro">Escolha um NPC para começar.</p>
+                </div>
+                <div class="master-player-switch" id="masterPlayerSwitch">
+                  <label>
+                    Celular de
+                    <select id="masterPlayerSelect"></select>
+                  </label>
+                </div>
+              </div>
+              <div class="message-thread" id="messageThread"></div>
+              <div class="reply-as hidden" id="replyAsBox">
+                <label>
+                  Responder como
+                  <select id="replyAsSelect"></select>
+                </label>
+              </div>
+              <div class="message-compose">
+                <textarea id="messageBody" placeholder="Escreva uma mensagem para o NPC"></textarea>
+                <button class="btn primary" id="sendMessageBtn">Enviar</button>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-board" class="view hidden">
+        <div class="panel player-sheet-picker hidden" id="playerSheetPicker">
+          <div class="section-head">
+            <div>
+              <h2>Escolha um jogador</h2>
+              <p>Veja a ficha, inventário e anotações pelo ponto de vista desse personagem.</p>
+            </div>
+          </div>
+          <div class="player-picker-list" id="playerSheetPickerList"></div>
+        </div>
+        <div class="player-section-tabs" id="playerSectionTabs" aria-label="Menu do jogador">
+          <button class="active" type="button" data-player-tab="sheet" title="Ficha" aria-label="Ficha">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
+            <span>Ficha</span>
+          </button>
+          <button type="button" data-player-tab="notes" title="Anotações" aria-label="Anotações">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 19.5V5a2 2 0 0 1 2-2h10l4 4v12.5a1.5 1.5 0 0 1-1.5 1.5H6a2 2 0 0 1-2-1.5z"/><path d="M14 3v5h5"/><path d="M8 13h8M8 17h5"/></svg>
+            <span>Anotações</span>
+          </button>
+          <button type="button" data-player-tab="inventory" title="Inventário" aria-label="Inventário">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 7h12l1 14H5L6 7z"/><path d="M9 7a3 3 0 0 1 6 0"/><path d="M9 12h6"/></svg>
+            <span>Inventário</span>
+          </button>
+          <button type="button" data-player-tab="relations" title="Relações" aria-label="Relações">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="7" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><circle cx="12" cy="17" r="3"/><path d="M9.5 9.5l1.5 4M14.5 9.5l-1.5 4M10 17H9"/></svg>
+            <span>Relações</span>
+          </button>
+          <button type="button" data-player-tab="files" title="Arquivos" aria-label="Arquivos">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M8 15l2-2 2 2 3-4 3 4"/></svg>
+            <span>Arquivos</span>
+          </button>
+        </div>
+        <button class="panel player-sheet-hero" id="openPlayerSheetModal" type="button" data-player-section="sheet">
+          <div class="player-sheet-portrait" id="playerSheetPortrait" title="Trocar foto do personagem"></div>
+          <div class="player-sheet-copy">
+            <span class="tag shared">Ficha do jogador</span>
+            <h2 id="playerSheetName">Personagem</h2>
+            <p id="playerSheetMeta">Informações públicas do personagem atual.</p>
+            <div class="player-sheet-tags" id="playerSheetTags"></div>
+          </div>
+        </button>
+        <input class="import-input" id="playerPortraitInput" type="file" accept="image/*">
+        <input class="import-input" id="playerSheetImageInput" type="file" accept="image/*">
+        <div class="panel" data-player-section="notes">
+          <div class="section-head">
+            <div>
+              <h2 id="playerAreaTitle">Área do jogador</h2>
+              <p id="playerAreaIntro">O que os personagens já descobriram, o que ainda está em aberto e o que o grupo quer fazer.</p>
+            </div>
+          </div>
+          <div class="form two">
+            <label>
+              Pista ou pergunta
+              <input id="boardTitle" placeholder="Ex.: A chave preta abre uma cripta">
+            </label>
+            <label>
+              Coluna
+              <select id="boardColumn">
+                <option>Pistas</option>
+                <option>Perguntas</option>
+                <option>Tarefas</option>
+              </select>
+            </label>
+          </div>
+          <label>
+            Detalhe
+            <textarea id="boardBody" placeholder="Complete com o contexto que a mesa já sabe."></textarea>
+          </label>
+          <button class="btn primary" id="addBoard" style="margin-top:10px">Adicionar ao jogador</button>
+        </div>
+        <div class="columns" style="margin-top:16px" data-player-section="notes">
+          <div class="column"><h3>Pistas</h3><div id="col-Pistas" class="list"></div></div>
+          <div class="column"><h3>Perguntas</h3><div id="col-Perguntas" class="list"></div></div>
+          <div class="column"><h3>Tarefas</h3><div id="col-Tarefas" class="list"></div></div>
+        </div>
+        <div class="panel" style="margin-top:16px" data-player-section="inventory">
+          <div class="section-head">
+            <div>
+              <h2 id="inventoryTitle">Inventário</h2>
+              <p id="inventoryIntro">Itens carregados pelo jogador durante a campanha.</p>
+            </div>
+            <button class="add-character-btn" id="openInventoryItemModal" title="Adicionar item" aria-label="Adicionar item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+            </button>
+          </div>
+          <div class="inventory-list" id="playerInventoryList"></div>
+        </div>
+        <div class="player-private-sections">
+          <div class="panel" style="margin-top:16px" data-player-section="relations">
+            <div class="section-head">
+              <div>
+                <h2 id="relationsTitle">Relações privadas</h2>
+                <p id="relationsIntro">Como esse personagem enxerga aliados, suspeitos, ameaças e outros vínculos.</p>
+              </div>
+            </div>
+            <div class="form player-owned-form" id="playerRelationForm">
+              <div class="form two">
+                <label>
+                  Pessoa ou grupo
+                  <select id="playerRelationTarget"></select>
+                </label>
+                <label>
+                  Relação
+                  <select id="playerRelationType">
+                    <option>Aliado</option>
+                    <option>Suspeito</option>
+                    <option>Ameaça</option>
+                    <option>Rival</option>
+                    <option>Amizade</option>
+                    <option>Família</option>
+                    <option>Dívida</option>
+                    <option>Neutro</option>
+                  </select>
+                </label>
+              </div>
+              <label>
+                Notas
+                <textarea id="playerRelationNotes" placeholder="O que seu personagem sabe, sente ou suspeita sobre essa relação."></textarea>
+              </label>
+              <div class="actions" style="justify-content:flex-start">
+                <button class="btn primary" id="addPlayerRelation" type="button">Adicionar relação</button>
+                <button class="btn hidden" id="cancelPlayerRelationEdit" type="button">Cancelar edição</button>
+              </div>
+            </div>
+            <div class="list" id="playerRelationList"></div>
+          </div>
+          <div class="panel" style="margin-top:16px" data-player-section="files">
+            <div class="section-head">
+              <div>
+                <h2 id="filesTitle">Arquivos do jogador</h2>
+                <p id="filesIntro">Imagens, pistas e referências que pertencem ao arquivo desse personagem.</p>
+              </div>
+            </div>
+            <div class="form player-owned-form" id="playerFileForm">
+              <label>
+                Nome do arquivo
+                <input id="playerFileTitle" placeholder="Ex.: Bilhete encontrado no armário">
+              </label>
+              <label>
+                Imagem
+                <input id="playerFileInput" type="file" accept="image/*">
+              </label>
+              <img class="inventory-preview hidden" id="playerFilePreview" alt="Prévia do arquivo">
+              <label>
+                Observação
+                <textarea id="playerFileNotes" placeholder="Contexto, origem ou dúvida ligada a esse arquivo."></textarea>
+              </label>
+              <button class="btn primary" id="addPlayerFile" type="button">Adicionar arquivo</button>
+            </div>
+            <div class="list" id="playerFileList"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-library" class="view hidden">
+          <div class="panel">
+            <div class="section-head">
+              <div>
+                <h2>Itens salvos</h2>
+              </div>
+              <button class="add-character-btn" id="openLibraryModal" type="button" title="Adicionar ao mundo" aria-label="Adicionar ao mundo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg></button>
+            </div>
+            <label>Buscar<input id="librarySearch" placeholder="Digite para filtrar"></label>
+            <div id="libraryList" class="list" style="margin-top:14px"></div>
+          </div>
+      </section>
+
+      <div class="modal-backdrop hidden" id="libraryModal" role="dialog" aria-modal="true" aria-labelledby="libraryModalTitle">
+        <article class="character-modal">
+          <div class="modal-head">
+            <h2 id="libraryModalTitle">Adicionar ao mundo</h2>
+            <button class="icon-btn" id="closeLibraryModal" type="button" title="Fechar" aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+          <div class="form">
+            <div class="form two">
+              <label>
+                Nome
+                <input id="libraryTitle" placeholder="Ex.: Taberna Caneca Azul" required>
+              </label>
+              <label>
+                Categoria
+                <select id="libraryType">
+                  <option>Lugar</option>
+                  <option>Item</option>
+                  <option>Regra</option>
+                  <option>Facção</option>
+                </select>
+              </label>
+            </div>
+            <label>
+              Detalhes
+              <textarea id="libraryBody" placeholder="Descrição curta, vozes, preços, pistas, regra caseira ou qualquer coisa útil." required></textarea>
+            </label>
+            <label>
+              Capa
+              <input id="libraryCover" type="file" accept="image/*">
+            </label>
+            <img class="inventory-preview hidden" id="libraryCoverPreview" alt="Prévia da capa do mundo">
+          </div>
+          <div class="modal-actions">
+            <button class="btn" id="cancelLibraryModal" type="button">Cancelar</button>
+            <button class="btn primary" id="addLibrary" type="button">Adicionar ao mundo</button>
+          </div>
+        </article>
+      </div>
+
+      <section id="view-settings" class="view hidden">
+        <div class="panel settings-panel" style="margin-bottom:16px">
+          <div class="section-head"><h2>Aparência</h2></div>
+          <fieldset class="theme-picker">
+            <legend>Tema</legend>
+            <label><input type="radio" name="appearance" value="light"><span>Claro</span></label>
+            <label><input type="radio" name="appearance" value="dark"><span>Escuro</span></label>
+          </fieldset>
+        </div>
+        <div class="panel settings-panel">
+          <div class="section-head">
+            <div>
+              <h2>Mesa atual</h2>
+              <p>Volte para a lista de mesas salvas neste dispositivo.</p>
+            </div>
+          </div>
+          <div class="actions" style="justify-content:flex-start">
+            <button class="btn" id="settingsChangeTableBtn">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+              Voltar para minhas mesas
+            </button>
+          </div>
+        </div>
+        <div class="panel settings-panel" style="margin-top:16px">
+          <div class="section-head">
+            <div>
+              <h2>Nuvem Supabase</h2>
+              <p>Base online para sincronização futura e mensagens em tempo real da Mesa Arcana.</p>
+            </div>
+          </div>
+          <div class="settings-storage">
+            <div class="cloud-config">
+              <p class="cloud-hint">Cada Mestre deve usar o proprio Supabase. Escudo do Mestre, ameaças e segredos internos são salvos na nuvem criptografados pela chave mestra.</p>
+              <label>
+                URL do projeto
+                <input id="supabaseUrlInput" placeholder="https://seu-projeto.supabase.co" autocomplete="off" spellcheck="false">
+              </label>
+              <label>
+                Chave publica
+                <input id="supabaseKeyInput" placeholder="sb_publishable_..." autocomplete="off" spellcheck="false">
+              </label>
+            </div>
+            <div class="actions">
+              <span class="sync-status local" id="supabaseStatus">Supabase nao configurado</span>
+              <button class="btn primary" id="saveSupabaseConfigBtn">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
+                Salvar configuracao
+              </button>
+              <button class="btn" id="testSupabaseBtn">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12a8 8 0 0 1 14.9-4"/><path d="M20 4v5h-5"/><path d="M20 12a8 8 0 0 1-14.9 4"/><path d="M4 20v-5h5"/></svg>
+                Testar conexão
+              </button>
+              <button class="btn danger" id="clearSupabaseConfigBtn">
+                Limpar
+              </button>
+              <button class="btn" id="createOnlineTableBtn">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                Convidar jogadores
+              </button>
+              <button class="btn" id="createMasterInviteBtn">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 7a4 4 0 1 0-3.46 3.97L4 18.5V21h2.5l1.5-1.5H10v-2h2v-2h2l2.03-2.03A4 4 0 0 0 15 7z"/><path d="M15 7h.01"/></svg>
+                Gerar chave mestra
+              </button>
+              <button class="btn" id="saveOnlineTableBtn">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
+                Salvar na nuvem
+              </button>
+              <button class="btn" id="loadOnlineTableBtn">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+                Carregar da nuvem
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <div class="modal-backdrop hidden" id="createTableModal" role="dialog" aria-modal="true" aria-labelledby="createTableModalTitle">
+    <article class="character-modal app-dialog">
+      <div class="modal-head">
+        <div>
+          <h2 id="createTableModalTitle">Criar uma mesa</h2>
+          <p>Este dispositivo será registrado como Mestre.</p>
+        </div>
+        <button class="icon-btn" id="closeCreateTableModal" title="Fechar" aria-label="Fechar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="app-dialog-form">
+        <label>
+          Nome da mesa
+          <input id="createTableNameInput" placeholder="Ex.: Escola FF">
+        </label>
+        <p class="cloud-hint">Depois de criar, configure o Supabase para gerar o convite online dos jogadores.</p>
+        <p class="dialog-error hidden" id="createTableError"></p>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="cancelCreateTableModal">Cancelar</button>
+        <button class="btn primary" id="confirmCreateTableModal">Criar mesa</button>
+      </div>
+    </article>
+  </div>
+
+  <div class="modal-backdrop hidden" id="joinTableModal" role="dialog" aria-modal="true" aria-labelledby="joinTableModalTitle">
+    <article class="character-modal app-dialog">
+      <div class="modal-head">
+        <div>
+          <h2 id="joinTableModalTitle">Entrar em uma mesa</h2>
+          <p id="joinTableIntro">Cole o convite recebido para continuar.</p>
+        </div>
+        <button class="icon-btn" id="closeJoinTableModal" title="Fechar" aria-label="Fechar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="app-dialog-form">
+        <label>
+          Convite da mesa
+          <textarea id="joinInviteInput" placeholder="Cole aqui o convite gerado pelo Mestre"></textarea>
+        </label>
+        <label id="joinCharacterNameBox">
+          Nome do personagem
+          <input id="joinCharacterNameInput" placeholder="Ex.: Testeb">
+        </label>
+        <label id="joinPinBox">
+          PIN
+          <input id="joinPinInput" type="password" autocomplete="current-password" placeholder="Senha/PIN do personagem">
+        </label>
+        <label id="joinPinConfirmBox">
+          Repetir PIN
+          <input id="joinPinConfirmInput" type="password" autocomplete="new-password" placeholder="Só precisa no primeiro acesso">
+        </label>
+        <p class="cloud-hint" id="joinDetailsHint">Depois que o convite for validado, o app pede personagem e PIN se for jogador.</p>
+        <p class="dialog-error hidden" id="joinTableError"></p>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="cancelJoinTableModal">Cancelar</button>
+        <button class="btn primary" id="confirmJoinTableModal">Entrar</button>
+      </div>
+    </article>
+  </div>
+
+  <div class="modal-backdrop hidden" id="inviteModal" role="dialog" aria-modal="true" aria-labelledby="inviteModalTitle">
+    <article class="character-modal app-dialog">
+      <div class="modal-head">
+        <div>
+          <h2 id="inviteModalTitle">Convite gerado</h2>
+          <p id="inviteModalIntro">Envie este código para quem vai entrar na mesa.</p>
+        </div>
+        <button class="icon-btn" id="closeInviteModal" title="Fechar" aria-label="Fechar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <span class="invite-code-label">Código</span>
+      <div class="modal-notes invite-output" id="inviteOutput"></div>
+      <p class="dialog-error hidden" id="inviteCopyStatus"></p>
+      <div class="modal-actions">
+        <button class="btn" id="copyInviteBtn">Copiar código</button>
+        <button class="btn primary" id="doneInviteBtn">Pronto</button>
+      </div>
+    </article>
+  </div>
+
+  <div class="modal-backdrop hidden" id="quickModal" role="dialog" aria-modal="true" aria-labelledby="quickModalTitle">
+    <article class="character-modal app-dialog">
+      <div class="modal-head">
+        <div>
+          <h2 id="quickModalTitle">Confirmar ação</h2>
+          <p id="quickModalIntro"></p>
+        </div>
+        <button class="icon-btn" id="quickModalClose" title="Fechar" aria-label="Fechar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <label class="app-dialog-form hidden" id="quickModalInputBox">
+        <span id="quickModalInputLabel">Valor</span>
+        <input id="quickModalInput">
+      </label>
+      <div class="modal-actions">
+        <button class="btn" id="quickModalCancel">Cancelar</button>
+        <button class="btn primary" id="quickModalConfirm">Confirmar</button>
+      </div>
+    </article>
+  </div>
+
+  <div class="modal-backdrop hidden" id="sessionModal" role="dialog" aria-modal="true" aria-labelledby="sessionModalTitle">
+    <article class="character-modal session-modal">
+      <div class="modal-head">
+        <div>
+          <span class="tag">Diário de bordo</span>
+          <h2 id="sessionModalTitle">Sessão</h2>
+          <p id="sessionModalDateLabel"></p>
+        </div>
+        <button class="icon-btn" id="closeSessionModal" title="Fechar" aria-label="Fechar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <label>
+        Título da sessão
+        <input id="sessionTitleInput" placeholder="Ex.: O baile de abertura">
+      </label>
+      <label style="margin-top:10px">
+        Data
+        <input id="sessionDateInput" type="date">
+      </label>
+      <label style="margin-top:14px">
+        Resumo da mesa
+        <textarea id="sessionSummaryInput" class="session-diary" placeholder="Resumo geral da sessão, visível para a mesa."></textarea>
+      </label>
+      <label class="master-player-switch" id="sessionDiaryPlayerBox" style="width:100%; max-width:360px; margin-top:14px">
+        Ver diário de
+        <select id="sessionDiaryPlayerSelect"></select>
+      </label>
+      <label style="margin-top:14px">
+        <span id="sessionDiaryLabel">Meu diário</span>
+        <textarea id="sessionDiaryInput" class="session-diary" placeholder="Escreva aqui o que aconteceu na sessão pela sua visão..."></textarea>
+      </label>
+      <div class="modal-actions">
+        <button class="btn danger" id="deleteSessionBtn">Remover sessão</button>
+        <button class="btn primary" id="saveSessionBtn">Salvar</button>
+      </div>
+    </article>
+  </div>
+
+  <div class="modal-backdrop hidden" id="addCharacterModal" role="dialog" aria-modal="true" aria-labelledby="addCharacterModalTitle">
+    <article class="character-modal">
+      <div class="modal-head">
+        <div>
+          <h2 id="addCharacterModalTitle">Adicionar personagem</h2>
+          <p>Crie um personagem dos jogadores ou um NPC importante para o elenco.</p>
+        </div>
+        <button class="icon-btn" id="closeAddCharacterModal" title="Fechar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="character-form-row">
+        <label>
+          Tipo
+          <select id="characterKind">
+            <option>Jogador</option>
+            <option>NPC</option>
+          </select>
+        </label>
+        <label>
+          Nome
+          <input id="characterName" placeholder="Nome do personagem">
+        </label>
+      </div>
+      <div class="character-form-row">
+        <label>
+          Jogador ou vínculo
+          <input id="playerName" placeholder="Ex.: João, guilda, cidade baixa">
+        </label>
+        <label>
+          Objetivo atual
+          <input id="playerFocus" placeholder="Ex.: Descobrir quem matou o irmão">
+        </label>
+      </div>
+      <div class="character-form-row">
+        <label>
+          Estado público
+          <select id="playerState">
+            <option>Em dia</option>
+            <option>Precisa revisar</option>
+            <option>Cheio de pistas</option>
+            <option>Perdido na trama</option>
+          </select>
+        </label>
+        <label>
+          Capa
+          <input id="newCharacterCover" type="file" accept="image/*">
+        </label>
+      </div>
+      <label>
+        Descrição
+        <textarea id="playerNotes" placeholder="Descreva quem é esse personagem, aparência, personalidade, papel na história ou o que ele esconde."></textarea>
+      </label>
+      <div class="modal-actions left-actions">
+        <button class="btn" id="addSecretButton" type="button">Adicionar segredos</button>
+      </div>
+      <div class="secret-list hidden" id="secretList"></div>
+      <img class="modal-cover hidden" id="newCharacterCoverPreview" alt="Prévia da capa do personagem">
+      <div class="modal-actions">
+        <button class="btn" id="cancelAddCharacter">Cancelar</button>
+        <button class="btn primary" id="addPlayer">Salvar personagem</button>
+      </div>
+    </article>
+  </div>
+
+  <div class="modal-backdrop hidden" id="characterModal" role="dialog" aria-modal="true" aria-labelledby="characterModalTitle">
+    <article class="character-modal sheet">
+      <button class="icon-btn sheet-close" id="closeCharacterModal" title="Fechar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+      </button>
+      <div class="character-modal-scroll">
+        <div class="modal-head">
+          <div>
+            <div class="meta" id="characterModalTags"></div>
+            <h2 id="characterModalTitle"></h2>
+            <p id="characterModalSubtitle"></p>
+          </div>
+          <button class="character-view-toggle hidden" id="toggleCharacterMasterView" type="button">Visão do Mestre</button>
+        </div>
+        <div class="detail-box" id="characterPublicDescriptionBox">
+          <span>Descrição</span>
+          <div class="modal-notes" id="characterModalNotes"></div>
+        </div>
+        <div class="detail-grid" id="characterPublicStatsBox">
+          <div class="detail-box">
+            <span>Objetivo atual</span>
+            <strong id="characterModalFocus"></strong>
+          </div>
+          <div class="detail-box">
+            <span>Estado</span>
+            <strong id="characterModalState"></strong>
+          </div>
+        </div>
+        <div class="detail-box hidden" id="characterSecretsBox">
+          <span>Segredos</span>
+          <ul class="secret-display" id="characterModalSecrets"></ul>
+        </div>
+        <div class="detail-box hidden" id="characterMasterNpcBox">
+          <span>Visão do Mestre</span>
+          <div class="master-npc-detail-grid" id="characterMasterNpcDetails"></div>
+          <div class="modal-notes hidden" id="characterMasterNpcNotes"></div>
+        </div>
+        <div class="detail-box" id="characterAnnotationsBox">
+          <span>Anotações</span>
+          <label class="master-player-switch" id="characterAnnotationPlayerBox" style="width:100%; max-width:360px; margin:0 0 10px 0">
+            Ver anotações de
+            <select id="characterAnnotationPlayerSelect"></select>
+          </label>
+          <textarea class="modal-notes live-annotations" id="characterModalAnnotations" placeholder="Os jogadores podem anotar aqui tudo que descobrirem, suspeitarem ou quiserem lembrar sobre esse personagem."></textarea>
+        </div>
+        <div class="modal-actions">
+          <button class="btn danger" id="deleteCharacterFromModal">Remover personagem</button>
+          <button class="btn primary" id="editCharacterFromModal">Editar</button>
+        </div>
+      </div>
+      <aside class="character-modal-media">
+        <div class="media-frame">
+          <div class="media-tools">
+            <label class="media-tool" for="addCharacterPhoto" title="Adicionar foto">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+            </label>
+            <input class="import-input" id="addCharacterPhoto" type="file" accept="image/*">
+            <button class="media-tool" id="openPhotoGallery" title="Visualizar fotos">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 13l2.5-2.5L14 14l2-2 3 3"/><circle cx="8" cy="9" r="1.2"/></svg>
+            </button>
+          </div>
+          <img class="modal-cover hidden" id="characterModalCover" alt="">
+          <div class="modal-cover-placeholder hidden" id="characterModalCoverPlaceholder" aria-hidden="true"></div>
+          <button class="media-arrow left hidden" id="previousCharacterPhoto" title="Foto anterior">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <button class="media-arrow right hidden" id="nextCharacterPhoto" title="Próxima foto">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M9 18l6-6-6-6"/></svg>
+          </button>
+          <span class="media-count hidden" id="characterPhotoCount"></span>
+        </div>
+        <label class="btn" for="modalCharacterCover">Trocar capa</label>
+        <input class="import-input" id="modalCharacterCover" type="file" accept="image/*">
+      </aside>
+    </article>
+  </div>
+
+  <div class="modal-backdrop hidden" id="masterClueModal" role="dialog" aria-modal="true" aria-labelledby="masterClueTitle">
+    <article class="character-modal">
+      <div class="modal-head"><h2 id="masterClueTitle">Adicionar pista</h2><button class="icon-btn" id="closeMasterClue" title="Fechar" aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+      <div class="form">
+        <label>Título<input id="masterClueName" placeholder="Ex.: Bilhete com tinta apagada" required></label>
+        <label>Nota<textarea id="masterClueBody" placeholder="Anote o que a pista revela, onde pode aparecer e quem pode interpretá-la."></textarea></label>
+        <label>Imagem<input id="masterClueImage" type="file" accept="image/*"></label>
+        <img id="masterCluePreview" class="hidden" alt="Imagem da pista" style="max-width:100%;max-height:280px;object-fit:contain">
+        <button class="btn hidden" id="removeMasterNoteImage" type="button">Remover imagem</button>
+        <p id="masterClueError" class="dialog-error hidden" role="alert"></p>
+      </div>
+      <div class="modal-actions"><button class="btn" id="cancelMasterClue">Cancelar</button><button class="btn primary" id="saveMasterClue">Adicionar pista</button></div>
+    </article>
+  </div>
+
+  <div class="modal-backdrop hidden" id="plannedNpcModal" role="dialog" aria-modal="true" aria-labelledby="plannedNpcTitle">
+    <article class="character-modal sheet">
+      <button class="icon-btn sheet-close" id="closePlannedNpc" title="Fechar" aria-label="Fechar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+      </button>
+      <div class="character-modal-scroll">
+        <div class="modal-head"><div>
+          <div class="meta"><span class="tag private">NPC</span><span class="tag private">Planejado</span></div>
+          <h2 id="plannedNpcTitle"></h2><p>Ficha privada do Mestre</p>
+        </div></div>
+        <div class="detail-box"><span>Descrição</span><div class="modal-notes" id="plannedNpcDescription"></div></div>
+        <div class="master-npc-detail-grid" id="plannedNpcDetails" style="margin-top:14px"></div>
+        <div class="detail-box" style="margin-top:14px"><span>Notas do mestre</span><div class="modal-notes" id="plannedNpcNotes"></div></div>
+        <div class="modal-actions"><button class="btn primary" id="editPlannedNpc">Editar ficha</button><button class="btn" id="revealPlannedNpc">Revelar aos jogadores</button></div>
+      </div>
+      <aside class="character-modal-media"><div class="media-frame">
+        <img class="modal-cover hidden" id="plannedNpcCover" alt="">
+        <div class="modal-cover-placeholder" id="plannedNpcInitials" aria-hidden="true"></div>
+      </div></aside>
+    </article>
+  </div>
+
+  <div class="modal-backdrop hidden" id="masterNpcModal" role="dialog" aria-modal="true" aria-labelledby="masterNpcModalTitle">
+    <article class="character-modal">
+      <div class="modal-head">
+        <div>
+          <h2 id="masterNpcModalTitle">Adicionar NPC</h2>
+          <p>Crie uma ficha privada para consultar habilidades, passado e entrada em cena.</p>
+        </div>
+        <button class="icon-btn" id="closeMasterNpcModal" title="Fechar" aria-label="Fechar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="form" id="masterNpcForm">
+        <div class="form two">
+          <label>
+            NPC da mesa
+            <select id="masterNpcLinkedCharacter"></select>
+          </label>
+          <label>
+            Nome ou título
+            <input id="masterNpcName" placeholder="Ex.: Samira">
+          </label>
+        </div>
+        <label>Foto<input id="masterNpcCover" type="file" accept="image/*"><img id="masterNpcCoverPreview" class="hidden" alt="Foto do NPC" style="max-width:160px;max-height:160px;object-fit:contain"></label>
+        <label>Descrição pública<textarea id="masterNpcDescription"></textarea></label>
+        <label>
+          Papel na história
+          <input id="masterNpcRole" placeholder="Ex.: contato da guilda, suspeita, mentora temporária">
+        </label>
+        <div class="form two">
+          <label>
+            Habilidades
+            <textarea id="masterNpcAbilities" placeholder="O que esse NPC sabe fazer, poderes, recursos, contatos ou truques."></textarea>
+          </label>
+          <label>
+            Passado trágico
+            <textarea id="masterNpcPast" placeholder="Feridas, traumas, culpa, perda ou segredo emocional."></textarea>
+          </label>
+        </div>
+        <label>
+          Quando aparecer
+          <textarea id="masterNpcEntrance" placeholder="Cenas ideais, gatilhos, pistas ou momentos em que esse NPC entra na história."></textarea>
+        </label>
+        <div class="form two">
+          <label>
+            Vantagens
+            <textarea id="masterNpcAdvantages" placeholder="Forças, aliados, conhecimentos, proteções ou vantagens sociais."></textarea>
+          </label>
+          <label>
+            Desvantagens
+            <textarea id="masterNpcDisadvantages" placeholder="Fraquezas, medos, dívidas, limitações ou pontos exploráveis."></textarea>
+          </label>
+        </div>
+        <label>
+          Notas do mestre
+          <textarea id="masterNpcNotes" placeholder="Detalhes livres, voz, aparência, frases, reações ou planos."></textarea>
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="cancelMasterNpc" type="button">Cancelar</button>
+        <button class="btn primary" id="addMasterNpc" type="button">Salvar ficha</button>
+        <button class="btn hidden" id="revealMasterNpc" type="button">Revelar aos jogadores</button>
+      </div>
+    </article>
+  </div>
+
+  <div class="modal-backdrop hidden" id="groupModal" role="dialog" aria-modal="true" aria-labelledby="groupModalTitle">
+    <article class="character-modal">
+      <div class="modal-head">
+        <div>
+          <h2 id="groupModalTitle">Criar grupo</h2>
+          <p>Escolha quais NPCs aparecem nesta conversa com o jogador.</p>
+        </div>
+        <button class="icon-btn" id="closeGroupModal" title="Fechar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="form">
+        <label>
+          Nome do grupo
+          <input id="groupName" placeholder="Ex.: Conselho da Escola">
+        </label>
+        <div>
+          <span style="display:block; color:var(--muted); margin-bottom:6px">NPCs no grupo</span>
+          <div class="group-options" id="groupNpcOptions"></div>
+        </div>
+        <div>
+          <span style="display:block; color:var(--muted); margin-bottom:6px">Jogadores no grupo</span>
+          <div class="group-options" id="groupPlayerOptions"></div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="cancelGroupModal">Cancelar</button>
+        <button class="btn primary" id="saveGroup">Criar grupo</button>
+      </div>
+    </article>
+  </div>
+
+  <div class="modal-backdrop hidden" id="inventoryItemModal" role="dialog" aria-modal="true" aria-labelledby="inventoryItemModalTitle">
+    <article class="character-modal">
+      <div class="modal-head">
+        <div>
+          <h2 id="inventoryItemModalTitle">Adicionar item</h2>
+          <p>Registre imagem, descrição e detalhes do item do jogador.</p>
+        </div>
+        <button class="icon-btn" id="closeInventoryItemModal" title="Fechar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="form">
+        <label>
+          Nome do item
+          <input id="inventoryItemName" placeholder="Ex.: chave enferrujada">
+        </label>
+        <label>
+          Descrição
+          <textarea id="inventoryItemDescription" placeholder="O que é, onde foi encontrado, para que serve ou qualquer detalhe importante."></textarea>
+        </label>
+        <label>
+          Imagem
+          <input id="inventoryItemImage" type="file" accept="image/*">
+        </label>
+        <img class="inventory-preview hidden" id="inventoryItemPreview" alt="Prévia do item">
+      </div>
+      <div class="modal-actions">
+        <button class="btn danger hidden" id="deleteInventoryItem">Remover item</button>
+        <button class="btn" id="cancelInventoryItem">Cancelar</button>
+        <button class="btn primary" id="saveInventoryItem">Salvar item</button>
+      </div>
+    </article>
+  </div>
+
+  <div class="modal-backdrop hidden" id="playerSheetImageModal" role="dialog" aria-modal="true" aria-labelledby="playerSheetImageTitle">
+    <article class="character-modal app-dialog" style="width:min(900px,100%)">
+      <div class="modal-head">
+        <div>
+          <h2 id="playerSheetImageTitle">Ficha do personagem</h2>
+          <p id="playerSheetImageIntro">Visualização da ficha enviada.</p>
+        </div>
+        <button class="icon-btn" id="closePlayerSheetImageModal" title="Fechar" aria-label="Fechar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="sheet-preview-frame" id="playerSheetPreview"></div>
+      <div class="modal-actions">
+        <button class="btn" id="changePlayerSheetImage">Adicionar/Trocar ficha</button>
+        <button class="btn primary" id="donePlayerSheetImage">Pronto</button>
+      </div>
+    </article>
+  </div>
+
+  <div class="modal-backdrop hidden" id="playerFileViewModal" role="dialog" aria-modal="true" aria-labelledby="playerFileViewTitle">
+    <article class="character-modal app-dialog" style="width:min(980px,100%)">
+      <div class="modal-head">
+        <div>
+          <h2 id="playerFileViewTitle">Arquivo do jogador</h2>
+          <p id="playerFileViewIntro">Visualização do arquivo.</p>
+        </div>
+        <button class="icon-btn" id="closePlayerFileViewModal" title="Fechar" aria-label="Fechar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="player-file-viewer" id="playerFileViewer"></div>
+      <p class="modal-notes hidden" id="playerFileViewNotes" style="margin-top:12px"></p>
+    </article>
+  </div>
+
+  <div class="modal-backdrop hidden" id="photoGalleryModal" role="dialog" aria-modal="true" aria-labelledby="photoGalleryTitle">
+    <article class="character-modal">
+      <div class="modal-head">
+        <div>
+          <h2 id="photoGalleryTitle">Fotos do personagem</h2>
+          <p>A capa fica apenas na ficha principal.</p>
+        </div>
+        <button class="icon-btn" id="closePhotoGallery" title="Fechar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="gallery-grid" id="photoGalleryGrid"></div>
+    </article>
+  </div>
+
+  <script src="./assets/app.js"></script>
+</body>
+</html>

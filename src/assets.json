@@ -1,0 +1,26 @@
+{
+  "app.js": [
+    "js/core/state.js",
+    "js/core/storage-and-vault.js",
+    "js/ui/dialogs.js",
+    "js/features/messages.js",
+    "js/services/cloud.js",
+    "js/features/characters-and-player.js",
+    "js/features/master.js",
+    "js/features/player-files.js",
+    "js/core/helpers.js",
+    "js/features/tables.js",
+    "js/ui/render.js",
+    "js/ui/events.js",
+    "js/features/sessions.js",
+    "js/app.js"
+  ],
+  "app.css": [
+    "styles/base-and-layout.css",
+    "styles/dialogs.css",
+    "styles/components.css",
+    "styles/responsive.css",
+    "styles/themes.css"
+  ],
+  "theme.js": ["js/ui/theme.js"]
+}
