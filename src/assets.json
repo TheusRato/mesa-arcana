@@ -12,6 +12,7 @@
     "js/features/tables.js",
     "js/ui/render.js",
     "js/ui/events.js",
+    "js/features/notifications.js",
     "js/features/sessions.js",
     "js/app.js"
   ],

@@ -1,4 +1,4 @@
-const CACHE_NAME = "mesa-arcana-v84";
+const CACHE_NAME = "mesa-arcana-v85";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -47,4 +47,36 @@ self.addEventListener("fetch", event => {
       }
     })()
   );
+});
+
+self.addEventListener("push", event => {
+  event.waitUntil((async () => {
+    let payload = {};
+    try { payload = event.data?.json() || {}; } catch { /* Use a generic notification for invalid payloads. */ }
+    await self.registration.showNotification(String(payload.sender || "Mesa Arcana"), {
+      body: String(payload.body || "Você recebeu uma nova mensagem."),
+      icon: new URL("./icons/icon-192.png", self.registration.scope).href,
+      badge: new URL("./icons/icon-192.png", self.registration.scope).href,
+      tag: `message-${payload.messageId || Date.now()}`,
+      data: { tableId: payload.tableId, conversationKey: payload.conversationKey }
+    });
+  })());
+});
+
+self.addEventListener("notificationclick", event => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const url = new URL(self.registration.scope);
+    const details = event.notification.data || {};
+    if (details.tableId && details.conversationKey) {
+      url.searchParams.set("pushTable", details.tableId);
+      url.searchParams.set("pushConversation", details.conversationKey);
+    }
+    const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const existing = windows.find(client => client.url.startsWith(self.registration.scope));
+    if (existing) {
+      await existing.navigate(url.href);
+      await existing.focus();
+    } else await self.clients.openWindow(url.href);
+  })());
 });

@@ -1,4 +1,5 @@
     function applyTableRole() {
+      renderPushSettings();
       const table = getActiveTable();
       const isMaster = table?.role === "master";
       document.querySelector('[data-view="master"]').classList.toggle("hidden", !isMaster);
@@ -79,6 +80,7 @@
     }
 
     function render() {
+      renderPushSettings();
       applyTableRole();
       const activeTable = getActiveTable();
       const playerName = activeTable?.role === "player" ? activeTable.playerName : "";

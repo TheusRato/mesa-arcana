@@ -1,0 +1,2 @@
+[functions.mesa-push]
+verify_jwt = false

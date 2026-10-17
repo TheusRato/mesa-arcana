@@ -69,7 +69,8 @@
         input = false,
         inputLabel = "Valor",
         inputValue = "",
-        inputPlaceholder = ""
+        inputPlaceholder = "",
+        inputType = "text"
       } = options;
       document.querySelector("#quickModalTitle").textContent = title;
       document.querySelector("#quickModalIntro").textContent = message;
@@ -83,6 +84,7 @@
       inputBox.classList.toggle("hidden", !input);
       document.querySelector("#quickModalInputLabel").textContent = inputLabel;
       inputElement.value = inputValue;
+      inputElement.type = inputType;
       inputElement.placeholder = inputPlaceholder;
       document.querySelector("#quickModal").classList.remove("hidden");
       if (input) {

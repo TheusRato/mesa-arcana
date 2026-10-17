@@ -1,4 +1,5 @@
     initializeApp();
+    openPushConversation();
 
     if ("serviceWorker" in navigator && ["https:", "http:"].includes(window.location.protocol)) {
       const hadController = Boolean(navigator.serviceWorker.controller);
