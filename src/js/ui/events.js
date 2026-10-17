@@ -681,3 +681,15 @@
     // Diário de bordo das sessões
     let activeSessionId = null;
 
+
+    document.querySelector("#saveIndividualSecrets").addEventListener("click", saveIndividualSecrets);
+    document.querySelector("#individualSecretsPlayer").addEventListener("change", event => loadIndividualSecrets(event.target.value));
+    document.querySelector("#reloadIndividualSecrets").addEventListener("click", () => loadIndividualSecrets(document.querySelector("#individualSecretsPlayer").value));
+    document.querySelector("#loginCloudAccount").addEventListener("click", loginCloudAccount);
+    document.querySelector("#addVerifiedPlayer").addEventListener("click", addVerifiedPlayer);
+    document.querySelector("#logoutCloudAccount").addEventListener("click", async () => {
+      clearIndividualSecrets();
+      const client = getSupabaseClient();
+      if (client) await client.auth.signOut();
+      setSupabaseStatus("Conta desconectada", "local");
+    });

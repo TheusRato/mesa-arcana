@@ -128,7 +128,7 @@
         <div class="master-section-tabs" id="masterSectionTabs" aria-label="Menu do mestre">
           <button class="active" type="button" data-master-tab="secrets" title="Segredos">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l7 4v6c0 4-3 7-7 8-4-1-7-4-7-8V7l7-4z"/><path d="M9.5 12.5l1.5 1.5 3.5-4"/></svg>
-            <span>Segredos</span>
+            <span>Segredos privados antigos do mestre</span>
           </button>
           <button type="button" data-master-tab="npcs" title="NPCs ocultos">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/><path d="M16 11l3 3"/></svg>
@@ -525,6 +525,12 @@
               <p>Base online para sincronização futura e mensagens em tempo real da Mesa Arcana.</p>
             </div>
           </div>
+          <div class="actions">
+            <button class="btn" id="loginCloudAccount" type="button">Entrar com e-mail</button>
+            <button class="btn" id="logoutCloudAccount" type="button">Sair da conta</button>
+            <button class="btn" id="addVerifiedPlayer" type="button">Vincular conta de jogador</button>
+          </div>
+          <p>Segredos online exigem e-mail verificado e vínculo autorizado pelo mestre. O PIN e a chave do cofre continuam separados da conta.</p>
           <div class="settings-storage">
             <div class="cloud-config">
               <p class="cloud-hint">Cada Mestre deve usar o proprio Supabase. Escudo do Mestre, ameaças e segredos internos são salvos na nuvem criptografados pela chave mestra.</p>
@@ -814,8 +820,17 @@
           </div>
         </div>
         <div class="detail-box hidden" id="characterSecretsBox">
-          <span>Segredos</span>
+          <span>Segredos privados antigos do mestre</span>
           <ul class="secret-display" id="characterModalSecrets"></ul>
+        </div>
+        <div class="detail-box" id="individualSecretsBox">
+          <label>Segredos individuais de <select id="individualSecretsPlayer"></select></label>
+          <p id="individualSecretsStatus" role="status" aria-live="polite"></p>
+          <label>Um segredo por linha<textarea id="individualSecretsInput" disabled></textarea></label>
+          <div class="actions">
+            <button class="btn primary" id="saveIndividualSecrets" type="button" disabled>Salvar segredos</button>
+            <button class="btn" id="reloadIndividualSecrets" type="button">Recarregar</button>
+          </div>
         </div>
         <div class="detail-box hidden" id="characterMasterNpcBox">
           <span>Visão do Mestre</span>

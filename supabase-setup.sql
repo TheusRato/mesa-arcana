@@ -66,68 +66,8 @@ alter table public.mesa_arcana_participants enable row level security;
 alter table public.mesa_arcana_conversations enable row level security;
 alter table public.mesa_arcana_messages enable row level security;
 
--- Políticas temporárias de desenvolvimento.
--- Elas deixam o app testar leitura/escrita com a publishable key.
--- Antes de usar com dados reais sensíveis, vamos trocar por políticas com login/participantes.
-
-drop policy if exists "dev read mesa tables" on public.mesa_arcana_tables;
-create policy "dev read mesa tables"
-on public.mesa_arcana_tables for select
-to anon, authenticated
-using (true);
-
-drop policy if exists "dev insert mesa tables" on public.mesa_arcana_tables;
-create policy "dev insert mesa tables"
-on public.mesa_arcana_tables for insert
-to anon, authenticated
-with check (true);
-
-drop policy if exists "dev update mesa tables" on public.mesa_arcana_tables;
-create policy "dev update mesa tables"
-on public.mesa_arcana_tables for update
-to anon, authenticated
-using (true)
-with check (true);
-
-drop policy if exists "dev read participants" on public.mesa_arcana_participants;
-create policy "dev read participants"
-on public.mesa_arcana_participants for select
-to anon, authenticated
-using (true);
-
-drop policy if exists "dev write participants" on public.mesa_arcana_participants;
-create policy "dev write participants"
-on public.mesa_arcana_participants for insert
-to anon, authenticated
-with check (true);
-
-drop policy if exists "dev read conversations" on public.mesa_arcana_conversations;
-create policy "dev read conversations"
-on public.mesa_arcana_conversations for select
-to anon, authenticated
-using (true);
-
-drop policy if exists "dev write conversations" on public.mesa_arcana_conversations;
-create policy "dev write conversations"
-on public.mesa_arcana_conversations for insert
-to anon, authenticated
-with check (true);
-
-drop policy if exists "dev update conversations" on public.mesa_arcana_conversations;
-create policy "dev update conversations"
-on public.mesa_arcana_conversations for update
-to anon, authenticated
-using (true)
-with check (true);
-
-drop policy if exists "dev read messages" on public.mesa_arcana_messages;
-create policy "dev read messages"
-on public.mesa_arcana_messages for select
-to anon, authenticated
-using (true);
-
-drop policy if exists "dev write messages" on public.mesa_arcana_messages;
-create policy "dev write messages"
-on public.mesa_arcana_messages for insert
-to anon, authenticated
-with check (true);
+-- No anonymous/browser access until the authenticated membership migration is installed.
+-- Run supabase/migrations/20261017_individual_secrets.sql next.
+-- Never restore the old permissive development policies.
+revoke all on public.mesa_arcana_tables, public.mesa_arcana_participants,
+  public.mesa_arcana_conversations, public.mesa_arcana_messages from anon, authenticated;

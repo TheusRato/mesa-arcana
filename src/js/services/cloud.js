@@ -14,6 +14,9 @@
         return null;
       }
       supabaseClient = window.supabase.createClient(supabaseConfig.url, supabaseConfig.key);
+      supabaseClient.auth.onAuthStateChange(event => {
+        if (["SIGNED_OUT", "SIGNED_IN", "USER_UPDATED"].includes(event)) clearIndividualSecrets();
+      });
       return supabaseClient;
     }
 
@@ -62,6 +65,7 @@
       }
       setSupabaseStatus("Criando mesa online...");
       try {
+        await verifiedCloudUser(true);
         const cloudData = await cloudDataForMaster(activeTable, data);
         const payload = {
           name: activeTable.name || data.campaign.name || "Mesa sem nome",
@@ -149,6 +153,8 @@
       const saveVersion = cloudChangeVersion;
       isSavingCloud = true;
       try {
+        const identity = await campaignIdentity(activeTable.onlineId);
+        if (identity.role !== activeTable.role || (identity.role === "player" && identity.name !== activeTable.playerName)) throw new Error("Identidade local não corresponde à conta verificada.");
         let nextData = activeTable.role === "master" ? await cloudDataForMaster(activeTable, data) : normalizeData(data);
         if (activeTable.role === "player") {
           const { data: remoteTable, error: readError } = await client
@@ -278,6 +284,8 @@
       isRefreshingCloud = true;
       if (!silent) setSupabaseStatus("Carregando da nuvem...");
       try {
+        const identity = await campaignIdentity(activeTable.onlineId);
+        if (identity.role !== activeTable.role || (identity.role === "player" && identity.name !== activeTable.playerName)) throw new Error("Identidade local não corresponde à conta verificada.");
         const { data: remoteTable, error } = await client
           .from("mesa_arcana_tables")
           .select("id,name,data,updated_at")
