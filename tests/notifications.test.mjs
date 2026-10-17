@@ -41,3 +41,65 @@ test('Service worker displays sender and text and opens a scoped conversation UR
   assert.equal(new URL(opened).pathname, '/mesa-arcana/');
   assert.equal(new URL(opened).searchParams.get('pushConversation'), 'npc:npc1:Ana');
 });
+
+function masterActivationFixture(masterKey = '') {
+  const listeners = {};
+  const nodes = new Map();
+  const saved = new Map();
+  let prompts = 0;
+  let saves = 0;
+  const table = { role: 'master', onlineId: 'table', masterKey };
+  const element = selector => {
+    if (!nodes.has(selector)) nodes.set(selector, { disabled: false, textContent: '', classList: { toggle() {} }, addEventListener: (event, callback) => listeners[selector] = callback });
+    return nodes.get(selector);
+  };
+  const scope = vm.createContext({
+    document: { querySelector: element },
+    window: { isSecureContext: true, Notification: {}, PushManager: {} },
+    Notification: { permission: 'granted', requestPermission: async () => 'granted' },
+    navigator: { serviceWorker: { ready: Promise.resolve({ pushManager: { getSubscription: async () => ({ toJSON: () => ({ endpoint: 'test' }) }) } }) } },
+    getActiveTable: () => table, supabaseConfig: { url: 'https://project.test', key: 'public' },
+    readLocalValue: key => saved.get(key), writeLocalValue: (key, value) => saved.set(key, value),
+    askInput: async () => { prompts++; return 'mestre-confirmado'; },
+    saveTableRegistry: () => saves++, atob, Uint8Array
+  });
+  vm.runInContext(fs.readFileSync(new URL('../src/js/features/notifications.js', import.meta.url), 'utf8'), scope);
+  return { scope, table, listeners, element, saved, prompts: () => prompts, saves: () => saves };
+}
+
+test('Master without a local key is prompted and activation saves the validated key', async () => {
+  const fixture = masterActivationFixture();
+  fixture.scope.callPushService = async input => {
+    if (input.action === 'config') return { publicKey: 'AQ' };
+    assert.equal(input.secret, 'mestre-confirmado');
+    return { token: 'revoke-token' };
+  };
+  await fixture.listeners['#enablePush']();
+  assert.equal(fixture.prompts(), 1);
+  assert.equal(fixture.table.masterKey, 'mestre-confirmado');
+  assert.equal(fixture.saves(), 1);
+  assert.equal(fixture.saved.size, 1);
+  assert.match(fixture.element('#pushStatus').textContent, /ativadas/);
+});
+
+test('Master with an outdated key can confirm a current key and retry', async () => {
+  const fixture = masterActivationFixture('old-key');
+  fixture.scope.callPushService = async input => {
+    if (input.action === 'config') return { publicKey: 'AQ' };
+    if (input.secret === 'old-key') { const error = new Error('Chave incorreta'); error.status = 403; throw error; }
+    return { token: 'revoke-token' };
+  };
+  await fixture.listeners['#enablePush']();
+  assert.equal(fixture.prompts(), 1);
+  assert.equal(fixture.table.masterKey, 'mestre-confirmado');
+  assert.match(fixture.element('#pushStatus').textContent, /ativadas/);
+});
+
+test('Activation failure remains visible after the interface refreshes', async () => {
+  const fixture = masterActivationFixture('key');
+  fixture.scope.callPushService = async () => { throw new Error('Falha de teste'); };
+  await fixture.listeners['#enablePush']();
+  fixture.scope.renderPushSettings();
+  assert.equal(fixture.element('#pushStatus').textContent, 'Falha de teste');
+  assert.equal(fixture.element('#enablePush').disabled, false);
+});

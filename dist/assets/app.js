@@ -4447,6 +4447,9 @@
     let activeSessionId = null;
 
 
+    let pushOperationBusy = false;
+    let pushOperationError = "";
+    let pushOperationIdentity = "";
     function pushStorageKey(table = getActiveTable()) {
       return `mesa-arcana-push:${supabaseConfig.url}:${table?.onlineId}:${table?.role}:${table?.playerName || ""}`;
     }
@@ -4455,10 +4458,11 @@
       const table = getActiveTable();
       const saved = readLocalValue(pushStorageKey());
       const supported = window.isSecureContext && "Notification" in window && "serviceWorker" in navigator && "PushManager" in window;
-      document.querySelector("#enablePush").disabled = !supported || !table?.onlineId;
+      document.querySelector("#enablePush").disabled = pushOperationBusy || !supported || !table?.onlineId;
+      document.querySelector("#disablePush").disabled = pushOperationBusy;
       document.querySelector("#enablePush").classList.toggle("hidden", Boolean(saved));
       document.querySelector("#disablePush").classList.toggle("hidden", !saved);
-      document.querySelector("#pushStatus").textContent = !supported
+      document.querySelector("#pushStatus").textContent = pushOperationIdentity === pushStorageKey() && pushOperationError ? pushOperationError : !supported
         ? "Notificações exigem HTTPS e um navegador compatível. No iPhone, abra o app instalado na tela inicial."
         : !table?.onlineId ? "Entre em uma mesa online para ativar notificações."
         : saved && Notification.permission === "granted" ? "Notificações ativadas nesta mesa e neste dispositivo. O texto poderá aparecer na tela bloqueada."
@@ -4471,7 +4475,11 @@
         body: JSON.stringify(payload)
       });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || "O serviço de notificações ainda precisa ser configurado no Supabase.");
+      if (!response.ok) {
+        const error = new Error(result.error || "O serviço de notificações ainda precisa ser configurado no Supabase.");
+        error.status = response.status;
+        throw error;
+      }
       return result;
     }
 
@@ -4480,39 +4488,72 @@
       return Uint8Array.from(binary, char => char.charCodeAt(0));
     }
 
+    async function requestMasterPushKey(table) {
+      const value = await askInput({
+        title: "Confirmar acesso do Mestre",
+        message: "Cole seu convite de Mestre para ativar as notificações neste dispositivo.",
+        inputLabel: "Convite ou chave mestra", inputType: "password", confirmText: "Ativar"
+      });
+      if (value === null) return null;
+      const trimmed = value.trim();
+      if (!trimmed) throw new Error("Informe o convite de Mestre para continuar.");
+      if (!trimmed.startsWith("MESA-ARCANA")) return trimmed;
+      const invite = readInviteCode(trimmed);
+      if (invite?.role !== "master" || !invite.masterKey || invite.tableId !== table.onlineId || (invite.supabaseUrl && invite.supabaseUrl !== supabaseConfig.url)) {
+        throw new Error("Use um convite de Mestre válido para esta mesa.");
+      }
+      return invite.masterKey;
+    }
+
     document.querySelector("#enablePush").addEventListener("click", async () => {
       const table = getActiveTable();
-      if (!table?.onlineId) return;
+      if (!table?.onlineId || pushOperationBusy) return;
       const identity = pushStorageKey(table);
-      const button = document.querySelector("#enablePush");
-      button.disabled = true;
+      pushOperationIdentity = identity;
+      pushOperationBusy = true;
+      pushOperationError = "";
+      renderPushSettings();
       try {
         const permission = await Notification.requestPermission();
         if (permission !== "granted") throw new Error("Notificações não autorizadas. Você pode permitir nas configurações do navegador.");
         const config = await callPushService({ action: "config" });
         if (!config.publicKey) throw new Error("O serviço de notificações ainda precisa ser configurado no Supabase.");
-        const secret = table.role === "master" ? table.masterKey : await askInput({
+        let secret = table.role === "master" ? table.masterKey || await requestMasterPushKey(table) : await askInput({
           title: "Ativar notificações", inputLabel: "Confirme seu PIN", inputType: "password", confirmText: "Ativar"
         });
         if (!secret) return;
         const registration = await navigator.serviceWorker.ready;
         let subscription = await registration.pushManager.getSubscription();
         if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: pushPublicKey(config.publicKey) });
-        const result = await callPushService({ action: "subscribe", tableId: table.onlineId, role: table.role, playerName: table.playerName || "", secret, subscription: subscription.toJSON() });
+        const subscribe = () => callPushService({ action: "subscribe", tableId: table.onlineId, role: table.role, playerName: table.playerName || "", secret, subscription: subscription.toJSON() });
+        let result;
+        try { result = await subscribe(); }
+        catch (error) {
+          if (table.role !== "master" || error.status !== 403) throw error;
+          secret = await requestMasterPushKey(table);
+          if (!secret) return;
+          result = await subscribe();
+        }
+        if (table.role === "master") {
+          table.masterKey = secret;
+          saveTableRegistry();
+        }
         writeLocalValue(identity, JSON.stringify({ token: result.token }));
         renderPushSettings();
       } catch (error) {
-        document.querySelector("#pushStatus").textContent = error.message;
-      } finally { button.disabled = false; }
+        pushOperationError = error.message;
+      } finally { pushOperationBusy = false; renderPushSettings(); }
     });
 
     document.querySelector("#disablePush").addEventListener("click", async () => {
       try {
+        pushOperationIdentity = pushStorageKey();
+        pushOperationError = "";
         const saved = JSON.parse(readLocalValue(pushStorageKey()) || "{}");
         await callPushService({ action: "unsubscribe", tableId: getActiveTable()?.onlineId, token: saved.token });
         removeLocalValue(pushStorageKey());
         renderPushSettings();
-      } catch (error) { document.querySelector("#pushStatus").textContent = error.message; }
+      } catch (error) { pushOperationError = error.message; renderPushSettings(); }
     });
 
     async function openPushConversation() {
