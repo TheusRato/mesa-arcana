@@ -1,0 +1,3 @@
+Teste de acesso de escrita do ChatGPT ao repositório Mesa Arcana.
+Data: 2026-10-17.
+Este arquivo está somente na branch de teste.
