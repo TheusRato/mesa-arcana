@@ -440,6 +440,7 @@
     function upsertPlayerProfile(name) {
       const playerName = String(name || "").trim();
       if (!playerName) return;
+      if (safeList(data.hiddenPlayerProfiles).includes(playerName.toLowerCase())) return;
       data.playerProfiles = safeList(data.playerProfiles);
       if (!data.playerProfiles.some(profile => profile.name === playerName)) {
         data.playerProfiles.push({ id: createId(), name: playerName, pinHash: "", cover: "", sheetImage: "" });
@@ -493,6 +494,7 @@
         playerRelations: safeList(rawData.playerRelations).map(normalizePlayerRelation),
         playerFiles: safeList(rawData.playerFiles).map(normalizePlayerFile),
         masterFiles: safeList(rawData.masterFiles).map(normalizeMasterFile),
+        hiddenPlayerProfiles: [...new Set(safeList(rawData.hiddenPlayerProfiles).filter(name => typeof name === "string").map(name => name.trim().toLowerCase()).filter(Boolean))],
         playerProfiles: safeList(rawData.playerProfiles).map(profile => ({
           id: profile.id || createId(),
           name: profile.name || "Personagem sem nome",

@@ -34,6 +34,7 @@
       playerFiles: [],
       masterFiles: [],
       playerProfiles: [],
+      hiddenPlayerProfiles: [],
       board: [
         { id: createId(), column: "Pistas", title: "Selo invertido", body: "Apareceu no mapa, na moeda antiga e na porta da capela." },
         { id: createId(), column: "Perguntas", title: "Quem pagou os mercenários?", body: "O grupo sabe que o pagamento veio em vidro negro." },
@@ -600,6 +601,7 @@
     function upsertPlayerProfile(name) {
       const playerName = String(name || "").trim();
       if (!playerName) return;
+      if (safeList(data.hiddenPlayerProfiles).includes(playerName.toLowerCase())) return;
       data.playerProfiles = safeList(data.playerProfiles);
       if (!data.playerProfiles.some(profile => profile.name === playerName)) {
         data.playerProfiles.push({ id: createId(), name: playerName, pinHash: "", cover: "", sheetImage: "" });
@@ -653,6 +655,7 @@
         playerRelations: safeList(rawData.playerRelations).map(normalizePlayerRelation),
         playerFiles: safeList(rawData.playerFiles).map(normalizePlayerFile),
         masterFiles: safeList(rawData.masterFiles).map(normalizeMasterFile),
+        hiddenPlayerProfiles: [...new Set(safeList(rawData.hiddenPlayerProfiles).filter(name => typeof name === "string").map(name => name.trim().toLowerCase()).filter(Boolean))],
         playerProfiles: safeList(rawData.playerProfiles).map(profile => ({
           id: profile.id || createId(),
           name: profile.name || "Personagem sem nome",
@@ -979,7 +982,7 @@
     }
 
     function getMasterMessageTargets() {
-      const profiles = safeList(data.playerProfiles);
+      const profiles = playerSheetProfiles();
       const npcs = safeList(data.players).filter(character => (character.kind || "").toLowerCase() === "npc");
       const selectedProfiles = profiles.length
         ? profiles.filter(profile => profile.name === activeMasterPlayerName || !activeMasterPlayerName)
@@ -1022,7 +1025,7 @@
         box.style.display = "none";
         return;
       }
-      const profiles = safeList(data.playerProfiles).filter(profile => profile.name);
+      const profiles = playerSheetProfiles();
       if (!profiles.length) {
         activeMasterPlayerName = "";
         box.style.display = "none";
@@ -1386,7 +1389,7 @@
     async function openGroupModal() {
       await syncParticipantsFromCloud({ force: true });
       const npcs = allMessageContacts();
-      const profiles = safeList(data.playerProfiles);
+      const profiles = playerSheetProfiles();
       document.querySelector("#groupName").value = "";
       document.querySelector("#groupNpcOptions").innerHTML = npcs.length
         ? npcs.map(npc => `
@@ -1805,7 +1808,13 @@
     }
 
     function removeFrom(collection, id) {
+      const removed = collection === "players" ? data.players.find(item => item.id === id) : null;
       data[collection] = data[collection].filter(item => item.id !== id);
+      if (removed && (removed.kind || "").toLowerCase() !== "npc") {
+        const remainingNames = new Set(data.players.filter(item => (item.kind || "").toLowerCase() !== "npc").flatMap(item => [item.character, item.name]).filter(Boolean).map(name => name.trim().toLowerCase()));
+        const names = [removed.character, removed.name].filter(Boolean).map(name => name.trim().toLowerCase()).filter(name => !remainingNames.has(name));
+        data.hiddenPlayerProfiles = [...new Set([...safeList(data.hiddenPlayerProfiles), ...names])];
+      }
       if (collection === "players" && activeCharacterId === id) {
         closeCharacterModal();
       }
@@ -1957,13 +1966,21 @@
       return getActiveTable()?.role === "player";
     }
 
+    function visiblePlayerProfile(profile) {
+      const name = String(profile.name || "").trim();
+      if (!name || safeList(data.hiddenPlayerProfiles).includes(name.toLowerCase())) return false;
+      const linked = safeList(data.players).some(player => (player.kind || "").toLowerCase() !== "npc" && [player.character, player.name].some(value => String(value || "").trim().toLowerCase() === name.toLowerCase()));
+      // Older versions created a profile just by previewing a sample character.
+      return linked || name.toLowerCase() !== "personagem a definir" || Boolean(profile.pinHash);
+    }
+
     function playerSheetProfiles() {
-      const profiles = safeList(data.playerProfiles).filter(profile => String(profile.name || "").trim());
+      const profiles = safeList(data.playerProfiles).filter(visiblePlayerProfile);
       if (profiles.length) return profiles;
       return safeList(data.players)
         .filter(player => (player.kind || "").toLowerCase() !== "npc")
         .map(player => ({ id: player.id || createId(), name: player.character || player.name || "Jogador" }))
-        .filter(profile => profile.name);
+        .filter(visiblePlayerProfile);
     }
 
     function renderPlayerSheetPicker() {
@@ -4273,6 +4290,10 @@
         secrets: getSecretInputs()
       };
       if (!player.character) return;
+      if ((player.kind || "").toLowerCase() !== "npc") {
+        const names = [player.character, player.name].filter(Boolean).map(name => name.trim().toLowerCase());
+        data.hiddenPlayerProfiles = safeList(data.hiddenPlayerProfiles).filter(name => !names.includes(name));
+      }
       if (editingCharacterId) {
         data.players = data.players.map(item => item.id === editingCharacterId ? { ...item, ...player } : item);
         save();

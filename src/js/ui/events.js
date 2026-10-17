@@ -504,6 +504,10 @@
         secrets: getSecretInputs()
       };
       if (!player.character) return;
+      if ((player.kind || "").toLowerCase() !== "npc") {
+        const names = [player.character, player.name].filter(Boolean).map(name => name.trim().toLowerCase());
+        data.hiddenPlayerProfiles = safeList(data.hiddenPlayerProfiles).filter(name => !names.includes(name));
+      }
       if (editingCharacterId) {
         data.players = data.players.map(item => item.id === editingCharacterId ? { ...item, ...player } : item);
         save();

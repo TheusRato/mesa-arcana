@@ -3,7 +3,13 @@
     }
 
     function removeFrom(collection, id) {
+      const removed = collection === "players" ? data.players.find(item => item.id === id) : null;
       data[collection] = data[collection].filter(item => item.id !== id);
+      if (removed && (removed.kind || "").toLowerCase() !== "npc") {
+        const remainingNames = new Set(data.players.filter(item => (item.kind || "").toLowerCase() !== "npc").flatMap(item => [item.character, item.name]).filter(Boolean).map(name => name.trim().toLowerCase()));
+        const names = [removed.character, removed.name].filter(Boolean).map(name => name.trim().toLowerCase()).filter(name => !remainingNames.has(name));
+        data.hiddenPlayerProfiles = [...new Set([...safeList(data.hiddenPlayerProfiles), ...names])];
+      }
       if (collection === "players" && activeCharacterId === id) {
         closeCharacterModal();
       }
@@ -155,13 +161,21 @@
       return getActiveTable()?.role === "player";
     }
 
+    function visiblePlayerProfile(profile) {
+      const name = String(profile.name || "").trim();
+      if (!name || safeList(data.hiddenPlayerProfiles).includes(name.toLowerCase())) return false;
+      const linked = safeList(data.players).some(player => (player.kind || "").toLowerCase() !== "npc" && [player.character, player.name].some(value => String(value || "").trim().toLowerCase() === name.toLowerCase()));
+      // Older versions created a profile just by previewing a sample character.
+      return linked || name.toLowerCase() !== "personagem a definir" || Boolean(profile.pinHash);
+    }
+
     function playerSheetProfiles() {
-      const profiles = safeList(data.playerProfiles).filter(profile => String(profile.name || "").trim());
+      const profiles = safeList(data.playerProfiles).filter(visiblePlayerProfile);
       if (profiles.length) return profiles;
       return safeList(data.players)
         .filter(player => (player.kind || "").toLowerCase() !== "npc")
         .map(player => ({ id: player.id || createId(), name: player.character || player.name || "Jogador" }))
-        .filter(profile => profile.name);
+        .filter(visiblePlayerProfile);
     }
 
     function renderPlayerSheetPicker() {

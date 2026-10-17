@@ -58,7 +58,7 @@
     }
 
     function getMasterMessageTargets() {
-      const profiles = safeList(data.playerProfiles);
+      const profiles = playerSheetProfiles();
       const npcs = safeList(data.players).filter(character => (character.kind || "").toLowerCase() === "npc");
       const selectedProfiles = profiles.length
         ? profiles.filter(profile => profile.name === activeMasterPlayerName || !activeMasterPlayerName)
@@ -101,7 +101,7 @@
         box.style.display = "none";
         return;
       }
-      const profiles = safeList(data.playerProfiles).filter(profile => profile.name);
+      const profiles = playerSheetProfiles();
       if (!profiles.length) {
         activeMasterPlayerName = "";
         box.style.display = "none";
@@ -465,7 +465,7 @@
     async function openGroupModal() {
       await syncParticipantsFromCloud({ force: true });
       const npcs = allMessageContacts();
-      const profiles = safeList(data.playerProfiles);
+      const profiles = playerSheetProfiles();
       document.querySelector("#groupName").value = "";
       document.querySelector("#groupNpcOptions").innerHTML = npcs.length
         ? npcs.map(npc => `

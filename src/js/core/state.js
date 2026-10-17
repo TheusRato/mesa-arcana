@@ -34,6 +34,7 @@
       playerFiles: [],
       masterFiles: [],
       playerProfiles: [],
+      hiddenPlayerProfiles: [],
       board: [
         { id: createId(), column: "Pistas", title: "Selo invertido", body: "Apareceu no mapa, na moeda antiga e na porta da capela." },
         { id: createId(), column: "Perguntas", title: "Quem pagou os mercenários?", body: "O grupo sabe que o pagamento veio em vidro negro." },
