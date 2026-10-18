@@ -41,47 +41,50 @@ function fixture(owner = 'Ana', role = 'player', backend = null) {
   return { scope, table, data, character, node: id => document.querySelector('#' + id) };
 }
 
-test('Player edits their description and secrets without changing master data; removal persists as an empty version', () => {
+test('Player version includes every editable field, preserves existing description and uses its own secrets', () => {
   const a = fixture();
-  a.scope.renderPersonalCharacterNotes(a.character, 'Beto');
-  a.node('personalCharacterDescription').value = 'Minha visão';
-  a.node('personalCharacterSecrets').value = ' Segredo A \n';
-  a.scope.savePersonalCharacterNotes();
+  const saved = a.scope.storePersonalCharacterVersion(a.character, {
+    kind: 'Jogador', name: 'Meu vínculo', character: 'Selene vista por Ana',
+    focus: 'Investigar', state: 'Suspeita', description: 'Minha visão', secrets: ['Segredo A']
+  });
+  assert.equal(saved, true);
   assert.equal(a.character.notes, 'Descrição original');
   assert.deepEqual(a.character.secrets, ['Antigo segredo do mestre']);
-  assert.equal(a.table.data.players[0].playerVersions.Ana.description, 'Minha visão');
-  assert.equal(a.character.playerVersions.Beto, undefined);
-  const restored = a.table.data.players[0];
-  assert.equal(a.scope.personalCharacterVersion(restored, 'Ana').secrets[0], 'Segredo A');
-  assert.equal(a.scope.personalCharacterVersion(restored, 'Beto').secrets.length, 0);
-  a.node('personalCharacterDescription').value = '';
-  a.node('personalCharacterSecrets').value = '';
-  a.scope.savePersonalCharacterNotes();
+  const shown = a.scope.characterForCurrentView(a.character);
+  assert.equal(shown.character, 'Selene vista por Ana');
+  assert.equal(shown.kind, 'Jogador');
+  assert.equal(shown.name, 'Meu vínculo');
+  assert.equal(shown.focus, 'Investigar');
+  assert.equal(shown.state, 'Suspeita');
+  assert.equal(shown.notes, 'Minha visão');
+  assert.equal(shown.secrets[0], 'Segredo A');
+  a.scope.storePersonalCharacterVersion(a.character, { description: '', secrets: [] });
   assert.equal(a.scope.personalCharacterVersion(a.character, 'Ana').description, '');
   assert.equal(a.scope.personalCharacterVersion(a.character, 'Ana').secrets.length, 0);
 });
 
-test('Master selects and edits each player separately', () => {
+test('Master selector contains players only and reads their saved versions without a duplicate editor', () => {
   const m = fixture('', 'master');
-  m.scope.renderPersonalCharacterNotes(m.character, 'Ana');
-  m.node('personalCharacterSecrets').value = 'Para Ana';
-  m.scope.savePersonalCharacterNotes();
-  m.scope.renderPersonalCharacterNotes(m.character, 'Beto');
-  assert.equal(m.node('personalCharacterSecrets').value, '');
-  m.node('personalCharacterSecrets').value = 'Para Beto';
-  m.scope.savePersonalCharacterNotes();
-  assert.equal(m.scope.personalCharacterVersion(m.character, 'Ana').secrets[0], 'Para Ana');
-  assert.equal(m.scope.personalCharacterVersion(m.character, 'Beto').secrets[0], 'Para Beto');
+  m.character.playerVersions = { Ana: { description: 'Descrição de Ana', secrets: ['A'] }, Beto: { description: 'Descrição de Beto', secrets: ['B'] } };
+  m.node('editCharacterFromModal').classList.remove = () => {};
+  m.scope.renderCharacterVersionSelect(m.character, 'Ana');
+  assert.equal(m.scope.characterForCurrentView(m.character).notes, 'Descrição de Ana');
+  m.scope.renderCharacterVersionSelect(m.character, 'Beto');
+  assert.equal(m.scope.characterForCurrentView(m.character).secrets[0], 'B');
+  assert.equal(m.node('characterVersionPlayerSelect').innerHTML.includes('Original'), false);
+  const html = fs.readFileSync(new URL('../src/index.html', import.meta.url), 'utf8');
+  assert.equal(html.includes('personalCharacterBox'), false);
+  assert.equal(html.includes('savePersonalCharacterNotes'), false);
 });
 
-test('Failed local persistence keeps the draft marked as unsaved', () => {
+test('Existing description-only versions migrate by fallback without exposing master secrets', () => {
   const a = fixture();
-  a.scope.renderPersonalCharacterNotes(a.character);
-  a.scope.persistLocalData = () => false;
-  a.node('personalCharacterDescription').value = 'Rascunho';
-  a.scope.savePersonalCharacterNotes();
-  assert.equal(a.scope.personalCharacterDraftChanged(), true);
-  assert.match(a.node('personalCharacterStatus').textContent, /Não foi possível salvar/);
+  a.character.playerVersions = { Ana: { description: 'Texto anterior', secrets: ['Anterior'] } };
+  const version = a.scope.personalCharacterVersion(a.character, 'Ana');
+  assert.equal(version.description, 'Texto anterior');
+  assert.equal(version.character, a.character.character || '');
+  assert.equal(version.secrets[0], 'Anterior');
+  assert.equal(a.scope.personalCharacterVersion(a.character, 'Beto').secrets.length, 0);
 });
 
 test('Merge ignores stale cached versions and applies only the selected player changes', () => {
@@ -98,9 +101,7 @@ test('Concurrent player saves retry timestamp conflicts and keep both records; s
   const backend = { row: { data: { campaign: {}, players: [{ id: 'selene', kind: 'NPC', notes: 'Base', secrets: [], playerVersions: {} }] }, updated_at: '1' }, conflicts: 0 };
   const a = fixture('Ana', 'player', backend), b = fixture('Beto', 'player', backend);
   for (const [f, text] of [[a, 'A'], [b, 'B']]) {
-    f.scope.renderPersonalCharacterNotes(f.character);
-    f.node('personalCharacterDescription').value = text;
-    f.scope.savePersonalCharacterNotes();
+    f.scope.storePersonalCharacterVersion(f.character, { description: text });
   }
   await Promise.all([a.scope.saveOnlineTable(), b.scope.saveOnlineTable()]);
   assert.ok(backend.conflicts >= 1);
@@ -121,4 +122,63 @@ test('Acknowledgement does not delete changes made while a save was in flight', 
   a.table.pendingPlayerVersions = { selene: { Ana: { description: 'newer' } } };
   a.scope.acknowledgePersonalCharacterVersions(a.table, { selene: { Ana: { description: 'old' } } });
   assert.equal(a.table.pendingPlayerVersions.selene.Ana.description, 'newer');
+});
+
+test('Existing edit dialog loads all personal fields, hides photo upload, and saves without changing master fields', () => {
+  const a = fixture();
+  const scope = a.scope;
+  const hidden = new Map();
+  const listeners = new Map();
+  const originalQuery = scope.document.querySelector;
+  scope.document.querySelector = selector => {
+    const node = originalQuery(selector);
+    node.classList = {
+      toggle(name, flag) { hidden.set(selector, Boolean(flag)); },
+      add() { hidden.set(selector, true); }, remove() { hidden.set(selector, false); }, contains() { return hidden.get(selector); }
+    };
+    node.nextElementSibling = {};
+    node.closest = () => ({ classList: { toggle(name, flag) { hidden.set('cover-label', flag); } } });
+    node.focus = () => {};
+    node.addEventListener = (event, handler) => listeners.set(selector + ':' + event, handler);
+    return node;
+  };
+  scope.document.getElementById = id => scope.document.querySelector('#' + id);
+  scope.setSelectValuePreservingLegacy = (id, value) => { scope.document.querySelector(id).value = value; };
+  scope.editingCharacterId = null;
+  scope.newCharacterCover = '';
+  scope.activeCharacterMasterView = false;
+  scope.data.hiddenPlayerProfiles = [];
+  scope.render = () => {};
+  vm.runInContext(read('features/characters-and-player.js'), scope);
+  scope.renderSecretInputs = secrets => { scope.testSecrets = Array.from(secrets); };
+  scope.getSecretInputs = () => ['Novo segredo'];
+  a.character.character = 'Selene';
+  a.character.cover = 'foto-original';
+  a.character.playerVersions = { Ana: { character: 'Minha Selene', focus: 'Meu objetivo', description: 'Texto já salvo', secrets: ['Anterior'] } };
+  scope.openEditCharacterModal();
+  assert.equal(a.node('characterName').value, 'Minha Selene');
+  assert.equal(a.node('playerFocus').value, 'Meu objetivo');
+  assert.equal(a.node('playerNotes').value, 'Texto já salvo');
+  assert.deepEqual(Array.from(scope.testSecrets), ['Anterior']);
+  assert.equal(hidden.get('cover-label'), true);
+  assert.equal(hidden.get('#newCharacterCoverPreview'), true);
+  // Closing the sheet while opening Edit must retain the underlying character id.
+  assert.equal(scope.activeCharacterId, null);
+  assert.equal(scope.editingCharacterId, 'selene');
+  const events = read('ui/events.js');
+  const start = events.indexOf('    document.querySelector("#addPlayer").addEventListener');
+  const end = events.indexOf('    document.querySelector("#modalCharacterCover")', start);
+  vm.runInContext(events.slice(start, end), scope);
+  scope.openCharacterModal = id => { scope.reopenedId = id; };
+  a.node('characterName').value = 'Selene editada';
+  a.node('playerNotes').value = 'Nova descrição';
+  listeners.get('#addPlayer:click')();
+  assert.equal(scope.reopenedId, 'selene');
+  assert.equal(a.character.playerVersions.Ana.character, 'Selene editada');
+  assert.equal(a.character.playerVersions.Ana.description, 'Nova descrição');
+  assert.equal(a.character.playerVersions.Ana.secrets[0], 'Novo segredo');
+  assert.equal(a.character.character, 'Selene');
+  assert.equal(a.character.cover, 'foto-original');
+  assert.equal(a.character.notes, 'Descrição original');
+  assert.deepEqual(a.character.secrets, ['Antigo segredo do mestre']);
 });

@@ -2,7 +2,11 @@
 
 O mestre cria os personagens/NPCs e mantém a descrição original e os segredos antigos no cofre privado. Cada jogador entra pelo convite, nome e PIN existentes; não há etapa nova de e-mail.
 
-Ao abrir um personagem, o jogador encontra **Minha versão**, com sua própria descrição e seus próprios segredos (um por linha). Na primeira edição, a descrição original serve de ponto de partida. Salvar não altera a descrição original nem a versão dos outros jogadores. Apagar todo o texto e salvar mantém a versão vazia. O mestre pode selecionar um jogador e consultar/editar essa versão separadamente.
+Ao abrir um personagem, o jogador lê sua versão diretamente nos campos normais da ficha. **Editar** abre a mesma janela usada pelo mestre: tipo, nome, jogador/vínculo, objetivo, estado, descrição e lista de segredos. Não há formulário extra dentro da ficha. A capa/fotos continuam sob controle do mestre: os controles de upload e exclusão ficam indisponíveis ao jogador, inclusive nos manipuladores de eventos.
+
+Na primeira edição, os campos do mestre servem de ponto de partida, exceto os segredos privados antigos do mestre, que nunca são copiados para a versão do jogador. Ao salvar, só a versão daquele jogador é modificada; descrição e segredos salvos pela edição anterior são preservados. Campos vazios continuam vazios, sem substituir pelo texto do mestre.
+
+Para o mestre, o seletor **Ver personagem pela visão de** contém somente os jogadores e muda a ficha inteira e suas anotações. Não há aba/opção “Original” nem um segundo editor do mestre. O botão **Editar** do mestre continua editando o personagem no lugar habitual; o botão do jogador edita sua versão. Só o mestre pode criar e remover personagens.
 
 As versões são salvas em `character.playerVersions[nome]`, separadas dos antigos `character.secrets` do mestre. Alterações pendentes ficam registradas localmente por personagem/jogador. A sincronização lê a campanha atual e envia somente as versões alteradas; o mestre também preserva versões de jogadores que não editou. O update verifica `updated_at` e repete a leitura/mesclagem quando outra gravação chegou antes, para evitar perda entre jogadores. Duas sessões do mesmo jogador ainda podem substituir sua própria versão pela última gravação.
 

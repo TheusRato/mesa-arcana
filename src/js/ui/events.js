@@ -385,6 +385,7 @@
     });
 
     document.querySelector("#newCharacterCover").addEventListener("change", async event => {
+      if (getActiveTable()?.role !== "master") return;
       const file = event.target.files[0];
       if (!file) {
         newCharacterCover = "";
@@ -407,7 +408,7 @@
       const character = getCharacter(activeCharacterId);
       if (!character) return;
       activeCharacterMasterView = !activeCharacterMasterView;
-      renderCharacterMasterView(character);
+      renderCharacterMasterView(characterForCurrentView(character));
     });
     document.querySelector("#characterAnnotationPlayerSelect").addEventListener("change", event => {
       const character = getCharacter(activeCharacterId);
@@ -487,7 +488,8 @@
     });
 
     document.querySelector("#addPlayer").addEventListener("click", () => {
-      if (getActiveTable()?.role !== "master") return;
+      const personal = getActiveTable()?.role === "player";
+      if (personal && !editingCharacterId) return;
       const existingCharacter = editingCharacterId ? getCharacter(editingCharacterId) : null;
       const player = {
         kind: document.querySelector("#characterKind").value,
@@ -505,6 +507,22 @@
         secrets: getSecretInputs()
       };
       if (!player.character) return;
+      if (personal) {
+        if (!existingCharacter) return;
+        const saved = storePersonalCharacterVersion(existingCharacter, {
+          kind: player.kind, name: player.name, character: player.character,
+          focus: player.focus, state: player.state, description: player.notes, secrets: player.secrets
+        });
+        if (!saved) {
+          document.querySelector("#characterEditStatus").textContent = "Não foi possível salvar. Seu rascunho continua aberto; tente novamente.";
+          return;
+        }
+        const id = editingCharacterId;
+        closeAddCharacterModal();
+        render();
+        openCharacterModal(id);
+        return;
+      }
       if ((player.kind || "").toLowerCase() !== "npc") {
         const names = [player.character, player.name].filter(Boolean).map(name => name.trim().toLowerCase());
         data.hiddenPlayerProfiles = safeList(data.hiddenPlayerProfiles).filter(name => !names.includes(name));
@@ -519,6 +537,7 @@
     });
 
     document.querySelector("#modalCharacterCover").addEventListener("change", async event => {
+      if (getActiveTable()?.role !== "master") return;
       const file = event.target.files[0];
       const character = getCharacter(activeCharacterId);
       if (!file || !character) return;
@@ -529,6 +548,7 @@
     });
 
     document.querySelector("#addCharacterPhoto").addEventListener("change", async event => {
+      if (getActiveTable()?.role !== "master") return;
       const file = event.target.files[0];
       const character = getCharacter(activeCharacterId);
       if (!file || !character) return;
@@ -684,11 +704,7 @@
     let activeSessionId = null;
 
 
-    document.querySelector("#personalCharacterOwner").addEventListener("change", async event => {
-      if (personalCharacterDraftChanged() && !await askConfirm({ title: "Descartar rascunho?", message: "Salve antes de trocar de jogador, ou descarte as alterações.", confirmText: "Descartar" })) {
-        event.target.value = personalCharacterDraft.owner;
-        return;
-      }
-      renderPersonalCharacterNotes(getCharacter(activeCharacterId), event.target.value);
+    document.querySelector("#characterVersionPlayerSelect").addEventListener("change", event => {
+      if (getActiveTable()?.role !== "master") return;
+      openCharacterModal(activeCharacterId, event.target.value);
     });
-    document.querySelector("#savePersonalCharacterNotes").addEventListener("click", savePersonalCharacterNotes);

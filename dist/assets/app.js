@@ -1810,71 +1810,61 @@
     }
 
 
-    // PIN edition: names select versions in the UI. This is not database access control.
-    let personalCharacterDraft = null;
+    // PIN edition: names select versions in the UI, not database access control.
+    let characterViewOwner = "";
 
     function personalCharacterVersion(character, owner) {
-      const version = character?.playerVersions?.[owner];
-      return { description: version?.description ?? character?.notes ?? "", secrets: safeList(version?.secrets) };
+      const version = character?.playerVersions?.[owner] || {};
+      return {
+        kind: version.kind ?? character?.kind ?? "Jogador",
+        name: version.name ?? character?.name ?? "",
+        character: version.character ?? character?.character ?? "",
+        focus: version.focus ?? character?.focus ?? "",
+        state: version.state ?? character?.state ?? "Em dia",
+        description: version.description ?? character?.notes ?? "",
+        secrets: safeList(version.secrets)
+      };
     }
 
-    function personalCharacterDraftChanged() {
-      return personalCharacterDraft && (
-        document.querySelector("#personalCharacterDescription").value !== personalCharacterDraft.description ||
-        document.querySelector("#personalCharacterSecrets").value !== personalCharacterDraft.secrets);
-    }
-
-    function renderPersonalCharacterNotes(character, selectedOwner = "") {
-      if (!character) return;
+    function characterVersionOwner() {
       const table = getActiveTable();
-      const isMaster = table?.role === "master";
-      const owners = isMaster ? playerSheetProfiles().map(profile => profile.name) : [table?.playerName].filter(Boolean);
-      const owner = isMaster ? (owners.includes(selectedOwner) ? selectedOwner : owners[0] || "") : table?.playerName || "";
-      const select = document.querySelector("#personalCharacterOwner");
-      select.innerHTML = owners.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
-      select.value = owner;
-      select.classList.toggle("hidden", !isMaster);
-      document.querySelector("#personalCharacterOwnerLabel").textContent = isMaster ? "Versão do jogador" : `Minha versão · ${owner || "Jogador não identificado"}`;
+      return table?.role === "player" ? table.playerName || "" : characterViewOwner;
+    }
+
+    function characterForCurrentView(character) {
+      const owner = characterVersionOwner();
+      if (!owner) return character;
       const version = personalCharacterVersion(character, owner);
-      const description = document.querySelector("#personalCharacterDescription");
-      const secrets = document.querySelector("#personalCharacterSecrets");
-      description.value = version.description;
-      secrets.value = version.secrets.join("\n");
-      description.disabled = secrets.disabled = !owner;
-      document.querySelector("#savePersonalCharacterNotes").disabled = !owner;
-      document.querySelector("#savePersonalCharacterNotes").textContent = isMaster ? "Salvar versão do jogador" : "Salvar minha versão";
-      document.querySelector("#personalCharacterStatus").textContent = owner
-        ? (isMaster ? `Descrição e segredos de ${owner}.` : "Sua versão fica separada das versões dos outros jogadores no app.")
-        : "Nenhum jogador cadastrado nesta mesa.";
-      personalCharacterDraft = { characterId: character.id, owner, description: description.value, secrets: secrets.value };
-      document.querySelector("#editCharacterFromModal").classList.toggle("hidden", !isMaster);
-      document.querySelector("#deleteCharacterFromModal").classList.toggle("hidden", !isMaster);
+      return { ...character, ...version, notes: version.description };
     }
 
-    function savePersonalCharacterNotes() {
+    function renderCharacterVersionSelect(character, requestedOwner = "") {
+      const master = getActiveTable()?.role === "master";
+      const owners = playerSheetProfiles().map(profile => profile.name);
+      characterViewOwner = master ? (owners.includes(requestedOwner) ? requestedOwner : owners[0] || "") : "";
+      const select = document.querySelector("#characterVersionPlayerSelect");
+      select.innerHTML = owners.map(owner => `<option value="${escapeHtml(owner)}">${escapeHtml(owner)}</option>`).join("");
+      select.value = characterViewOwner;
+      document.querySelector("#characterVersionPlayerBox").classList.toggle("hidden", !master || !owners.length);
+      document.querySelector("#deleteCharacterFromModal").classList.toggle("hidden", !master);
+      document.querySelector("#editCharacterFromModal").classList.remove("hidden");
+      document.querySelector("#characterPhotoUpload").classList.toggle("hidden", !master);
+      document.querySelector('label[for="modalCharacterCover"]').classList.toggle("hidden", !master);
+    }
+
+    function storePersonalCharacterVersion(character, changes) {
       const table = getActiveTable();
-      const character = getCharacter(activeCharacterId);
-      if (!table || !character || personalCharacterDraft?.characterId !== character.id) return;
-      // Ignore a forged select value for player views; use the table's PIN identity.
-      const owner = table.role === "master" ? personalCharacterDraft.owner : table.playerName;
-      if (!owner) return;
-      const description = document.querySelector("#personalCharacterDescription").value;
-      const secrets = document.querySelector("#personalCharacterSecrets").value.split("\n").map(value => value.trim()).filter(Boolean);
-      const version = { description, secrets };
+      // Players always write their own version, regardless of DOM selection.
+      const owner = table?.role === "player" ? table.playerName : "";
+      if (!character || !owner) return false;
+      const version = { ...personalCharacterVersion(character, owner), ...changes };
       character.playerVersions = { ...(character.playerVersions || {}), [owner]: version };
       table.pendingPlayerVersions = { ...(table.pendingPlayerVersions || {}), [character.id]: {
         ...(table.pendingPlayerVersions?.[character.id] || {}), [owner]: version
       } };
-      if (!persistLocalData()) {
-        document.querySelector("#personalCharacterStatus").textContent = "Não foi possível salvar no dispositivo. Mantenha esta tela aberta e tente novamente.";
-        return;
-      }
-      personalCharacterDraft.description = description;
-      personalCharacterDraft.secrets = document.querySelector("#personalCharacterSecrets").value;
+      if (!persistLocalData()) return false;
       scheduleCloudTableSave();
-      document.querySelector("#personalCharacterStatus").textContent = table.onlineId
-        ? "Versão salva neste dispositivo. Acompanhe o status da sincronização para confirmar o envio à nuvem."
-        : "Versão salva neste dispositivo.";
+      return true;
     }
 
     function mergePersonalCharacterVersions(remoteCharacters, localCharacters, pending = {}, owner = null) {
@@ -1941,14 +1931,14 @@
     }
 
     function getCharacterAnnotation(character) {
-      const owner = activePersonalOwner();
+      const owner = characterVersionOwner();
       if (!owner) return character?.annotations || "";
       const notes = character?.playerAnnotations || {};
       return notes[owner] ?? "";
     }
 
     function setCharacterAnnotation(character, value) {
-      const owner = activePersonalOwner();
+      const owner = characterVersionOwner();
       if (!character) return;
       if (!owner) {
         character.annotations = value;
@@ -1975,27 +1965,11 @@
     }
 
     function renderCharacterAnnotationPlayerSelect(character) {
-      const table = getActiveTable();
-      const box = document.querySelector("#characterAnnotationPlayerBox");
-      const select = document.querySelector("#characterAnnotationPlayerSelect");
-      const annotationsField = document.querySelector("#characterModalAnnotations");
-      if (table?.role !== "master") {
-        box.style.display = "none";
-        annotationsField.placeholder = "Anote aqui tudo que você descobriu, suspeita ou quer lembrar sobre esse personagem.";
-        return;
-      }
-      const profiles = playerSheetProfiles();
-      if (!profiles.length) {
-        activeMasterPlayerName = "";
-        box.style.display = "none";
-        annotationsField.placeholder = "Nenhum jogador entrou nesta mesa ainda.";
-        return;
-      }
-      ensureActiveMasterPlayer();
-      select.innerHTML = profiles.map(profile => `<option value="${escapeHtml(profile.name)}">${escapeHtml(profile.name)}</option>`).join("");
-      select.value = activeMasterPlayerName;
-      box.style.display = "block";
-      annotationsField.placeholder = `Anotações de ${activeMasterPlayerName || "jogador"} sobre ${character?.character || "este personagem"}.`;
+      document.querySelector("#characterAnnotationPlayerBox").style.display = "none";
+      const owner = characterVersionOwner();
+      document.querySelector("#characterModalAnnotations").placeholder = owner
+        ? `Anotações de ${owner} sobre ${character?.character || "este personagem"}.`
+        : "Anotações do mestre sobre este personagem.";
     }
 
     function renderSessionDiaryPlayerSelect(session) {
@@ -2290,7 +2264,7 @@
         ? photos.map((photo, index) => `
           <div class="gallery-item">
             <img src="${photo}" alt="Foto ${index + 1} de ${escapeHtml(character.character || "personagem")}">
-            <button class="btn danger" type="button" data-delete-photo="${index}">Excluir</button>
+            ${getActiveTable()?.role === "master" ? `<button class="btn danger" type="button" data-delete-photo="${index}">Excluir</button>` : ""}
           </div>`).join("")
         : empty("Nenhuma foto extra adicionada.");
       document.querySelectorAll("[data-delete-photo]").forEach(button => {
@@ -2299,6 +2273,7 @@
     }
 
     function deleteCharacterPhoto(index) {
+      if (getActiveTable()?.role !== "master") return;
       const character = getCharacter(activeCharacterId);
       if (!character) return;
       character.photos = (character.photos || []).filter((_, itemIndex) => itemIndex !== index);
@@ -2308,9 +2283,11 @@
       renderPhotoGallery();
     }
 
-    function openCharacterModal(id) {
-      const character = getCharacter(id);
-      if (!character) return;
+    function openCharacterModal(id, requestedOwner = "") {
+      const sourceCharacter = getCharacter(id);
+      if (!sourceCharacter) return;
+      renderCharacterVersionSelect(sourceCharacter, requestedOwner);
+      const character = characterForCurrentView(sourceCharacter);
       activeCharacterId = id;
       activeCharacterMasterView = false;
       document.querySelector("#characterModalTags").innerHTML = `
@@ -2331,7 +2308,6 @@
       secretsBox.classList.toggle("hidden", secrets.length === 0);
       secretsList.innerHTML = secrets.map(secret => `<li><button class="secret-link" type="button" data-secret-jump="${escapeHtml(secret)}">${escapeHtml(secret)}</button></li>`).join("");
       bindSecretLinks();
-      renderPersonalCharacterNotes(character);
       renderCharacterMasterView(character);
       activePhotoIndex = 0;
       renderCharacterMedia();
@@ -2353,6 +2329,8 @@
 
     function openAddCharacterModal() {
       if (getActiveTable()?.role !== "master") return;
+      document.querySelector("#newCharacterCover").closest("label").classList.remove("hidden");
+      document.querySelector("#characterEditStatus").textContent = "";
       editingCharacterId = null;
       document.querySelector("#addCharacterModalTitle").textContent = "Adicionar personagem";
       document.querySelector("#addCharacterModalTitle").nextElementSibling.textContent = "Crie um personagem dos jogadores ou um NPC importante para o elenco.";
@@ -2363,13 +2341,19 @@
     }
 
     function openEditCharacterModal() {
-      if (getActiveTable()?.role !== "master") return;
-      const character = getCharacter(activeCharacterId);
+      const sourceCharacter = getCharacter(activeCharacterId);
+      if (!sourceCharacter) return;
+      const personal = getActiveTable()?.role === "player";
+      const character = personal ? characterForCurrentView(sourceCharacter) : sourceCharacter;
       if (!character) return;
       editingCharacterId = character.id;
       newCharacterCover = character.cover || "";
       document.querySelector("#addCharacterModalTitle").textContent = "Editar personagem";
-      document.querySelector("#addCharacterModalTitle").nextElementSibling.textContent = "Atualize os detalhes deste personagem.";
+      document.querySelector("#addCharacterModalTitle").nextElementSibling.textContent = personal
+        ? "Suas alterações ficam na sua versão deste personagem."
+        : "Atualize os detalhes deste personagem.";
+      document.querySelector("#newCharacterCover").closest("label").classList.toggle("hidden", personal);
+      document.querySelector("#characterEditStatus").textContent = "";
       document.querySelector("#addPlayer").textContent = "Salvar alterações";
       document.querySelector("#characterKind").value = character.kind || "Jogador";
       document.querySelector("#playerName").value = character.name || "";
@@ -2380,7 +2364,7 @@
       renderSecretInputs(character.secrets || []);
       document.querySelector("#newCharacterCover").value = "";
       const preview = document.querySelector("#newCharacterCoverPreview");
-      preview.classList.toggle("hidden", !newCharacterCover);
+      preview.classList.toggle("hidden", personal || !newCharacterCover);
       preview.src = newCharacterCover || "";
       closeCharacterModal();
       document.querySelector("#addCharacterModal").classList.remove("hidden");
@@ -3760,7 +3744,9 @@
       renderMasterFiles();
 
       document.querySelector("#playerGrid").innerHTML = data.players.length
-        ? data.players.map(player => `
+        ? data.players.map(sourcePlayer => {
+          const player = activeTable?.role === "player" ? characterForCurrentView(sourcePlayer) : sourcePlayer;
+          return `
           <article class="player-card" data-character-id="${player.id}" tabindex="0" role="button" aria-label="Abrir ${escapeHtml(player.character)}">
             <header>
               <div>
@@ -3782,7 +3768,7 @@
                 ? `<img class="character-cover" src="${player.cover}" alt="Capa de ${escapeHtml(player.character)}">`
                 : `<div class="character-cover" aria-hidden="true">${escapeHtml(characterInitials(player.character))}</div>`}
             </div>
-          </article>`).join("")
+          </article>`; }).join("")
         : empty("Adicione personagens dos jogadores e NPCs importantes da campanha.");
 
       ["Pistas", "Perguntas", "Tarefas"].forEach(column => {
@@ -4274,6 +4260,7 @@
     });
 
     document.querySelector("#newCharacterCover").addEventListener("change", async event => {
+      if (getActiveTable()?.role !== "master") return;
       const file = event.target.files[0];
       if (!file) {
         newCharacterCover = "";
@@ -4296,7 +4283,7 @@
       const character = getCharacter(activeCharacterId);
       if (!character) return;
       activeCharacterMasterView = !activeCharacterMasterView;
-      renderCharacterMasterView(character);
+      renderCharacterMasterView(characterForCurrentView(character));
     });
     document.querySelector("#characterAnnotationPlayerSelect").addEventListener("change", event => {
       const character = getCharacter(activeCharacterId);
@@ -4376,7 +4363,8 @@
     });
 
     document.querySelector("#addPlayer").addEventListener("click", () => {
-      if (getActiveTable()?.role !== "master") return;
+      const personal = getActiveTable()?.role === "player";
+      if (personal && !editingCharacterId) return;
       const existingCharacter = editingCharacterId ? getCharacter(editingCharacterId) : null;
       const player = {
         kind: document.querySelector("#characterKind").value,
@@ -4394,6 +4382,22 @@
         secrets: getSecretInputs()
       };
       if (!player.character) return;
+      if (personal) {
+        if (!existingCharacter) return;
+        const saved = storePersonalCharacterVersion(existingCharacter, {
+          kind: player.kind, name: player.name, character: player.character,
+          focus: player.focus, state: player.state, description: player.notes, secrets: player.secrets
+        });
+        if (!saved) {
+          document.querySelector("#characterEditStatus").textContent = "Não foi possível salvar. Seu rascunho continua aberto; tente novamente.";
+          return;
+        }
+        const id = editingCharacterId;
+        closeAddCharacterModal();
+        render();
+        openCharacterModal(id);
+        return;
+      }
       if ((player.kind || "").toLowerCase() !== "npc") {
         const names = [player.character, player.name].filter(Boolean).map(name => name.trim().toLowerCase());
         data.hiddenPlayerProfiles = safeList(data.hiddenPlayerProfiles).filter(name => !names.includes(name));
@@ -4408,6 +4412,7 @@
     });
 
     document.querySelector("#modalCharacterCover").addEventListener("change", async event => {
+      if (getActiveTable()?.role !== "master") return;
       const file = event.target.files[0];
       const character = getCharacter(activeCharacterId);
       if (!file || !character) return;
@@ -4418,6 +4423,7 @@
     });
 
     document.querySelector("#addCharacterPhoto").addEventListener("change", async event => {
+      if (getActiveTable()?.role !== "master") return;
       const file = event.target.files[0];
       const character = getCharacter(activeCharacterId);
       if (!file || !character) return;
@@ -4573,14 +4579,10 @@
     let activeSessionId = null;
 
 
-    document.querySelector("#personalCharacterOwner").addEventListener("change", async event => {
-      if (personalCharacterDraftChanged() && !await askConfirm({ title: "Descartar rascunho?", message: "Salve antes de trocar de jogador, ou descarte as alterações.", confirmText: "Descartar" })) {
-        event.target.value = personalCharacterDraft.owner;
-        return;
-      }
-      renderPersonalCharacterNotes(getCharacter(activeCharacterId), event.target.value);
+    document.querySelector("#characterVersionPlayerSelect").addEventListener("change", event => {
+      if (getActiveTable()?.role !== "master") return;
+      openCharacterModal(activeCharacterId, event.target.value);
     });
-    document.querySelector("#savePersonalCharacterNotes").addEventListener("click", savePersonalCharacterNotes);
 
     let pushOperationBusy = false;
     let pushOperationError = "";

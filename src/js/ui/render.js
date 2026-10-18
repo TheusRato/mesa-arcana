@@ -148,7 +148,9 @@
       renderMasterFiles();
 
       document.querySelector("#playerGrid").innerHTML = data.players.length
-        ? data.players.map(player => `
+        ? data.players.map(sourcePlayer => {
+          const player = activeTable?.role === "player" ? characterForCurrentView(sourcePlayer) : sourcePlayer;
+          return `
           <article class="player-card" data-character-id="${player.id}" tabindex="0" role="button" aria-label="Abrir ${escapeHtml(player.character)}">
             <header>
               <div>
@@ -170,7 +172,7 @@
                 ? `<img class="character-cover" src="${player.cover}" alt="Capa de ${escapeHtml(player.character)}">`
                 : `<div class="character-cover" aria-hidden="true">${escapeHtml(characterInitials(player.character))}</div>`}
             </div>
-          </article>`).join("")
+          </article>`; }).join("")
         : empty("Adicione personagens dos jogadores e NPCs importantes da campanha.");
 
       ["Pistas", "Perguntas", "Tarefas"].forEach(column => {

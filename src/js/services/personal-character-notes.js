@@ -1,68 +1,58 @@
-    // PIN edition: names select versions in the UI. This is not database access control.
-    let personalCharacterDraft = null;
+    // PIN edition: names select versions in the UI, not database access control.
+    let characterViewOwner = "";
 
     function personalCharacterVersion(character, owner) {
-      const version = character?.playerVersions?.[owner];
-      return { description: version?.description ?? character?.notes ?? "", secrets: safeList(version?.secrets) };
+      const version = character?.playerVersions?.[owner] || {};
+      return {
+        kind: version.kind ?? character?.kind ?? "Jogador",
+        name: version.name ?? character?.name ?? "",
+        character: version.character ?? character?.character ?? "",
+        focus: version.focus ?? character?.focus ?? "",
+        state: version.state ?? character?.state ?? "Em dia",
+        description: version.description ?? character?.notes ?? "",
+        secrets: safeList(version.secrets)
+      };
     }
 
-    function personalCharacterDraftChanged() {
-      return personalCharacterDraft && (
-        document.querySelector("#personalCharacterDescription").value !== personalCharacterDraft.description ||
-        document.querySelector("#personalCharacterSecrets").value !== personalCharacterDraft.secrets);
-    }
-
-    function renderPersonalCharacterNotes(character, selectedOwner = "") {
-      if (!character) return;
+    function characterVersionOwner() {
       const table = getActiveTable();
-      const isMaster = table?.role === "master";
-      const owners = isMaster ? playerSheetProfiles().map(profile => profile.name) : [table?.playerName].filter(Boolean);
-      const owner = isMaster ? (owners.includes(selectedOwner) ? selectedOwner : owners[0] || "") : table?.playerName || "";
-      const select = document.querySelector("#personalCharacterOwner");
-      select.innerHTML = owners.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
-      select.value = owner;
-      select.classList.toggle("hidden", !isMaster);
-      document.querySelector("#personalCharacterOwnerLabel").textContent = isMaster ? "Versão do jogador" : `Minha versão · ${owner || "Jogador não identificado"}`;
+      return table?.role === "player" ? table.playerName || "" : characterViewOwner;
+    }
+
+    function characterForCurrentView(character) {
+      const owner = characterVersionOwner();
+      if (!owner) return character;
       const version = personalCharacterVersion(character, owner);
-      const description = document.querySelector("#personalCharacterDescription");
-      const secrets = document.querySelector("#personalCharacterSecrets");
-      description.value = version.description;
-      secrets.value = version.secrets.join("\n");
-      description.disabled = secrets.disabled = !owner;
-      document.querySelector("#savePersonalCharacterNotes").disabled = !owner;
-      document.querySelector("#savePersonalCharacterNotes").textContent = isMaster ? "Salvar versão do jogador" : "Salvar minha versão";
-      document.querySelector("#personalCharacterStatus").textContent = owner
-        ? (isMaster ? `Descrição e segredos de ${owner}.` : "Sua versão fica separada das versões dos outros jogadores no app.")
-        : "Nenhum jogador cadastrado nesta mesa.";
-      personalCharacterDraft = { characterId: character.id, owner, description: description.value, secrets: secrets.value };
-      document.querySelector("#editCharacterFromModal").classList.toggle("hidden", !isMaster);
-      document.querySelector("#deleteCharacterFromModal").classList.toggle("hidden", !isMaster);
+      return { ...character, ...version, notes: version.description };
     }
 
-    function savePersonalCharacterNotes() {
+    function renderCharacterVersionSelect(character, requestedOwner = "") {
+      const master = getActiveTable()?.role === "master";
+      const owners = playerSheetProfiles().map(profile => profile.name);
+      characterViewOwner = master ? (owners.includes(requestedOwner) ? requestedOwner : owners[0] || "") : "";
+      const select = document.querySelector("#characterVersionPlayerSelect");
+      select.innerHTML = owners.map(owner => `<option value="${escapeHtml(owner)}">${escapeHtml(owner)}</option>`).join("");
+      select.value = characterViewOwner;
+      document.querySelector("#characterVersionPlayerBox").classList.toggle("hidden", !master || !owners.length);
+      document.querySelector("#deleteCharacterFromModal").classList.toggle("hidden", !master);
+      document.querySelector("#editCharacterFromModal").classList.remove("hidden");
+      document.querySelector("#characterPhotoUpload").classList.toggle("hidden", !master);
+      document.querySelector('label[for="modalCharacterCover"]').classList.toggle("hidden", !master);
+    }
+
+    function storePersonalCharacterVersion(character, changes) {
       const table = getActiveTable();
-      const character = getCharacter(activeCharacterId);
-      if (!table || !character || personalCharacterDraft?.characterId !== character.id) return;
-      // Ignore a forged select value for player views; use the table's PIN identity.
-      const owner = table.role === "master" ? personalCharacterDraft.owner : table.playerName;
-      if (!owner) return;
-      const description = document.querySelector("#personalCharacterDescription").value;
-      const secrets = document.querySelector("#personalCharacterSecrets").value.split("\n").map(value => value.trim()).filter(Boolean);
-      const version = { description, secrets };
+      // Players always write their own version, regardless of DOM selection.
+      const owner = table?.role === "player" ? table.playerName : "";
+      if (!character || !owner) return false;
+      const version = { ...personalCharacterVersion(character, owner), ...changes };
       character.playerVersions = { ...(character.playerVersions || {}), [owner]: version };
       table.pendingPlayerVersions = { ...(table.pendingPlayerVersions || {}), [character.id]: {
         ...(table.pendingPlayerVersions?.[character.id] || {}), [owner]: version
       } };
-      if (!persistLocalData()) {
-        document.querySelector("#personalCharacterStatus").textContent = "Não foi possível salvar no dispositivo. Mantenha esta tela aberta e tente novamente.";
-        return;
-      }
-      personalCharacterDraft.description = description;
-      personalCharacterDraft.secrets = document.querySelector("#personalCharacterSecrets").value;
+      if (!persistLocalData()) return false;
       scheduleCloudTableSave();
-      document.querySelector("#personalCharacterStatus").textContent = table.onlineId
-        ? "Versão salva neste dispositivo. Acompanhe o status da sincronização para confirmar o envio à nuvem."
-        : "Versão salva neste dispositivo.";
+      return true;
     }
 
     function mergePersonalCharacterVersions(remoteCharacters, localCharacters, pending = {}, owner = null) {
