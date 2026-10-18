@@ -2,6 +2,7 @@
       renderPushSettings();
       const table = getActiveTable();
       const isMaster = table?.role === "master";
+      document.querySelector("#openAddCharacterModal").classList.toggle("hidden", !isMaster);
       document.querySelector('[data-view="master"]').classList.toggle("hidden", !isMaster);
       document.querySelector("#currentTableLabel").textContent = table ? tableIdentityLabel(table) : "";
       renderPlayerNavSubmenu();
@@ -154,7 +155,7 @@
                 <h3>${escapeHtml(player.character)}</h3>
                 <small>${escapeHtml(player.name)}</small>
               </div>
-              <button class="icon-btn" title="Remover" data-remove="players" data-id="${player.id}">${iconTrash()}</button>
+              ${activeTable?.role === "master" ? `<button class="icon-btn" title="Remover" data-remove="players" data-id="${player.id}">${iconTrash()}</button>` : ""}
             </header>
             <div class="character-card-body">
               <div class="character-card-copy">
@@ -250,6 +251,7 @@
       document.querySelectorAll("[data-remove]").forEach(button => {
         button.onclick = event => {
           event.stopPropagation();
+          if (button.dataset.remove === "players" && getActiveTable()?.role !== "master") return;
           removeFrom(button.dataset.remove, button.dataset.id);
         };
       });

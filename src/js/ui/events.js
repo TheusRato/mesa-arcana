@@ -487,6 +487,7 @@
     });
 
     document.querySelector("#addPlayer").addEventListener("click", () => {
+      if (getActiveTable()?.role !== "master") return;
       const existingCharacter = editingCharacterId ? getCharacter(editingCharacterId) : null;
       const player = {
         kind: document.querySelector("#characterKind").value,
@@ -556,6 +557,7 @@
       }
     });
     document.querySelector("#deleteCharacterFromModal").addEventListener("click", () => {
+      if (getActiveTable()?.role !== "master") return;
       if (activeCharacterId) {
         removeFrom("players", activeCharacterId);
       }
@@ -681,3 +683,12 @@
     // Diário de bordo das sessões
     let activeSessionId = null;
 
+
+    document.querySelector("#personalCharacterOwner").addEventListener("change", async event => {
+      if (personalCharacterDraftChanged() && !await askConfirm({ title: "Descartar rascunho?", message: "Salve antes de trocar de jogador, ou descarte as alterações.", confirmText: "Descartar" })) {
+        event.target.value = personalCharacterDraft.owner;
+        return;
+      }
+      renderPersonalCharacterNotes(getCharacter(activeCharacterId), event.target.value);
+    });
+    document.querySelector("#savePersonalCharacterNotes").addEventListener("click", savePersonalCharacterNotes);

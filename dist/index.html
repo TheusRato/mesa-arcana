@@ -128,7 +128,7 @@
         <div class="master-section-tabs" id="masterSectionTabs" aria-label="Menu do mestre">
           <button class="active" type="button" data-master-tab="secrets" title="Segredos">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l7 4v6c0 4-3 7-7 8-4-1-7-4-7-8V7l7-4z"/><path d="M9.5 12.5l1.5 1.5 3.5-4"/></svg>
-            <span>Segredos</span>
+            <span>Segredos antigos do mestre</span>
           </button>
           <button type="button" data-master-tab="npcs" title="NPCs ocultos">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/><path d="M16 11l3 3"/></svg>
@@ -814,8 +814,18 @@
           </div>
         </div>
         <div class="detail-box hidden" id="characterSecretsBox">
-          <span>Segredos</span>
+          <span>Segredos antigos do mestre</span>
           <ul class="secret-display" id="characterModalSecrets"></ul>
+        </div>
+        <div class="detail-box" id="personalCharacterBox">
+          <label id="personalCharacterOwnerLabel" for="personalCharacterOwner">Minha versão deste personagem</label>
+          <select id="personalCharacterOwner"></select>
+          <label for="personalCharacterDescription">Minha descrição</label>
+          <textarea class="modal-notes" id="personalCharacterDescription" placeholder="Como você vê este personagem..."></textarea>
+          <label for="personalCharacterSecrets">Meus segredos (um por linha)</label>
+          <textarea class="modal-notes" id="personalCharacterSecrets" placeholder="O que você sabe sobre este personagem..."></textarea>
+          <button class="btn primary" id="savePersonalCharacterNotes" type="button">Salvar minha versão</button>
+          <p id="personalCharacterStatus" role="status" aria-live="polite"></p>
         </div>
         <div class="detail-box hidden" id="characterMasterNpcBox">
           <span>Visão do Mestre</span>

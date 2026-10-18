@@ -149,28 +149,36 @@
       const saveVersion = cloudChangeVersion;
       isSavingCloud = true;
       try {
-        let nextData = activeTable.role === "master" ? await cloudDataForMaster(activeTable, data) : normalizeData(data);
-        if (activeTable.role === "player") {
+        const snapshot = JSON.parse(JSON.stringify(data));
+        const pending = JSON.parse(JSON.stringify(activeTable.pendingPlayerVersions || {}));
+        let nextData, savedRow;
+        for (let attempt = 0; attempt < 5; attempt++) {
           const { data: remoteTable, error: readError } = await client
-            .from("mesa_arcana_tables")
-            .select("data")
-            .eq("id", activeTable.onlineId)
-            .single();
+            .from("mesa_arcana_tables").select("data,updated_at").eq("id", activeTable.onlineId).single();
           if (readError) throw readError;
-          nextData = mergePlayerWritableData(remoteTable.data || initialData, data);
+          nextData = activeTable.role === "master"
+            ? await cloudDataForMaster(activeTable, snapshot)
+            : mergePlayerWritableData(remoteTable.data || initialData, snapshot);
+          nextData.players = mergePersonalCharacterVersions(
+            remoteTable.data?.players, nextData.players, pending,
+            activeTable.role === "master" ? null : activeTable.playerName
+          );
+          const { data: updated, error } = await client.from("mesa_arcana_tables")
+            .update({ name: activeTable.name || snapshot.campaign.name || "Mesa sem nome", data: nextData })
+            .eq("id", activeTable.onlineId).eq("updated_at", remoteTable.updated_at)
+            .select("updated_at").maybeSingle();
+          if (error) throw error;
+          if (updated) { savedRow = updated; break; }
         }
-        const payload = {
-          name: activeTable.name || data.campaign.name || "Mesa sem nome",
-          data: nextData
-        };
-        const { error } = await client
-          .from("mesa_arcana_tables")
-          .update(payload)
-          .eq("id", activeTable.onlineId);
-        if (error) throw error;
+        if (!savedRow) throw new Error("A mesa está recebendo outras alterações. Tente salvar novamente; sua versão permanece neste dispositivo.");
+        acknowledgePersonalCharacterVersions(activeTable, pending);
         if (saveVersion === cloudChangeVersion) activeTable.pendingCloudSave = false;
-        activeTable.data = activeTable.role === "player" ? playerSafeData(nextData) : normalizeData(data);
-        activeTable.updatedAt = new Date().toISOString();
+        // Keep edits made while this request was in flight and incorporate other players' versions.
+        if (getActiveTable() === activeTable) {
+          data.players = mergePersonalCharacterVersions(nextData.players, data.players, activeTable.pendingPlayerVersions || {});
+          activeTable.data = normalizeData(data);
+        }
+        activeTable.updatedAt = savedRow.updated_at;
         saveTableRegistry();
         setSupabaseStatus(activeTable.role === "master" ? "Mesa salva na nuvem" : "Alteracoes enviadas", "synced");
       } catch (error) {

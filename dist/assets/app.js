@@ -627,8 +627,7 @@
         activeTable.data = normalizeData(data);
         activeTable.name = activeTable.data.campaign.name || activeTable.name || "Mesa sem nome";
         activeTable.updatedAt = new Date().toISOString();
-        saveTableRegistry();
-        return true;
+        return saveTableRegistry();
       } catch (error) {
         console.warn("Não foi possível salvar todos os dados neste navegador.", error);
         return false;
@@ -1606,28 +1605,36 @@
       const saveVersion = cloudChangeVersion;
       isSavingCloud = true;
       try {
-        let nextData = activeTable.role === "master" ? await cloudDataForMaster(activeTable, data) : normalizeData(data);
-        if (activeTable.role === "player") {
+        const snapshot = JSON.parse(JSON.stringify(data));
+        const pending = JSON.parse(JSON.stringify(activeTable.pendingPlayerVersions || {}));
+        let nextData, savedRow;
+        for (let attempt = 0; attempt < 5; attempt++) {
           const { data: remoteTable, error: readError } = await client
-            .from("mesa_arcana_tables")
-            .select("data")
-            .eq("id", activeTable.onlineId)
-            .single();
+            .from("mesa_arcana_tables").select("data,updated_at").eq("id", activeTable.onlineId).single();
           if (readError) throw readError;
-          nextData = mergePlayerWritableData(remoteTable.data || initialData, data);
+          nextData = activeTable.role === "master"
+            ? await cloudDataForMaster(activeTable, snapshot)
+            : mergePlayerWritableData(remoteTable.data || initialData, snapshot);
+          nextData.players = mergePersonalCharacterVersions(
+            remoteTable.data?.players, nextData.players, pending,
+            activeTable.role === "master" ? null : activeTable.playerName
+          );
+          const { data: updated, error } = await client.from("mesa_arcana_tables")
+            .update({ name: activeTable.name || snapshot.campaign.name || "Mesa sem nome", data: nextData })
+            .eq("id", activeTable.onlineId).eq("updated_at", remoteTable.updated_at)
+            .select("updated_at").maybeSingle();
+          if (error) throw error;
+          if (updated) { savedRow = updated; break; }
         }
-        const payload = {
-          name: activeTable.name || data.campaign.name || "Mesa sem nome",
-          data: nextData
-        };
-        const { error } = await client
-          .from("mesa_arcana_tables")
-          .update(payload)
-          .eq("id", activeTable.onlineId);
-        if (error) throw error;
+        if (!savedRow) throw new Error("A mesa está recebendo outras alterações. Tente salvar novamente; sua versão permanece neste dispositivo.");
+        acknowledgePersonalCharacterVersions(activeTable, pending);
         if (saveVersion === cloudChangeVersion) activeTable.pendingCloudSave = false;
-        activeTable.data = activeTable.role === "player" ? playerSafeData(nextData) : normalizeData(data);
-        activeTable.updatedAt = new Date().toISOString();
+        // Keep edits made while this request was in flight and incorporate other players' versions.
+        if (getActiveTable() === activeTable) {
+          data.players = mergePersonalCharacterVersions(nextData.players, data.players, activeTable.pendingPlayerVersions || {});
+          activeTable.data = normalizeData(data);
+        }
+        activeTable.updatedAt = savedRow.updated_at;
         saveTableRegistry();
         setSupabaseStatus(activeTable.role === "master" ? "Mesa salva na nuvem" : "Alteracoes enviadas", "synced");
       } catch (error) {
@@ -1802,6 +1809,97 @@
       cloudSaveTimer = window.setTimeout(saveOnlineTable, 1200);
     }
 
+
+    // PIN edition: names select versions in the UI. This is not database access control.
+    let personalCharacterDraft = null;
+
+    function personalCharacterVersion(character, owner) {
+      const version = character?.playerVersions?.[owner];
+      return { description: version?.description ?? character?.notes ?? "", secrets: safeList(version?.secrets) };
+    }
+
+    function personalCharacterDraftChanged() {
+      return personalCharacterDraft && (
+        document.querySelector("#personalCharacterDescription").value !== personalCharacterDraft.description ||
+        document.querySelector("#personalCharacterSecrets").value !== personalCharacterDraft.secrets);
+    }
+
+    function renderPersonalCharacterNotes(character, selectedOwner = "") {
+      if (!character) return;
+      const table = getActiveTable();
+      const isMaster = table?.role === "master";
+      const owners = isMaster ? playerSheetProfiles().map(profile => profile.name) : [table?.playerName].filter(Boolean);
+      const owner = isMaster ? (owners.includes(selectedOwner) ? selectedOwner : owners[0] || "") : table?.playerName || "";
+      const select = document.querySelector("#personalCharacterOwner");
+      select.innerHTML = owners.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
+      select.value = owner;
+      select.classList.toggle("hidden", !isMaster);
+      document.querySelector("#personalCharacterOwnerLabel").textContent = isMaster ? "Versão do jogador" : `Minha versão · ${owner || "Jogador não identificado"}`;
+      const version = personalCharacterVersion(character, owner);
+      const description = document.querySelector("#personalCharacterDescription");
+      const secrets = document.querySelector("#personalCharacterSecrets");
+      description.value = version.description;
+      secrets.value = version.secrets.join("\n");
+      description.disabled = secrets.disabled = !owner;
+      document.querySelector("#savePersonalCharacterNotes").disabled = !owner;
+      document.querySelector("#savePersonalCharacterNotes").textContent = isMaster ? "Salvar versão do jogador" : "Salvar minha versão";
+      document.querySelector("#personalCharacterStatus").textContent = owner
+        ? (isMaster ? `Descrição e segredos de ${owner}.` : "Sua versão fica separada das versões dos outros jogadores no app.")
+        : "Nenhum jogador cadastrado nesta mesa.";
+      personalCharacterDraft = { characterId: character.id, owner, description: description.value, secrets: secrets.value };
+      document.querySelector("#editCharacterFromModal").classList.toggle("hidden", !isMaster);
+      document.querySelector("#deleteCharacterFromModal").classList.toggle("hidden", !isMaster);
+    }
+
+    function savePersonalCharacterNotes() {
+      const table = getActiveTable();
+      const character = getCharacter(activeCharacterId);
+      if (!table || !character || personalCharacterDraft?.characterId !== character.id) return;
+      // Ignore a forged select value for player views; use the table's PIN identity.
+      const owner = table.role === "master" ? personalCharacterDraft.owner : table.playerName;
+      if (!owner) return;
+      const description = document.querySelector("#personalCharacterDescription").value;
+      const secrets = document.querySelector("#personalCharacterSecrets").value.split("\n").map(value => value.trim()).filter(Boolean);
+      const version = { description, secrets };
+      character.playerVersions = { ...(character.playerVersions || {}), [owner]: version };
+      table.pendingPlayerVersions = { ...(table.pendingPlayerVersions || {}), [character.id]: {
+        ...(table.pendingPlayerVersions?.[character.id] || {}), [owner]: version
+      } };
+      if (!persistLocalData()) {
+        document.querySelector("#personalCharacterStatus").textContent = "Não foi possível salvar no dispositivo. Mantenha esta tela aberta e tente novamente.";
+        return;
+      }
+      personalCharacterDraft.description = description;
+      personalCharacterDraft.secrets = document.querySelector("#personalCharacterSecrets").value;
+      scheduleCloudTableSave();
+      document.querySelector("#personalCharacterStatus").textContent = table.onlineId
+        ? "Versão salva neste dispositivo. Acompanhe o status da sincronização para confirmar o envio à nuvem."
+        : "Versão salva neste dispositivo.";
+    }
+
+    function mergePersonalCharacterVersions(remoteCharacters, localCharacters, pending = {}, owner = null) {
+      const remoteById = new Map(safeList(remoteCharacters).map(character => [character.id, character]));
+      return safeList(localCharacters).map(character => {
+        const remote = remoteById.get(character.id);
+        const versions = { ...((remote ? remote.playerVersions : character.playerVersions) || {}) };
+        const changes = pending[character.id] || {};
+        Object.entries(changes).forEach(([name, version]) => {
+          if (owner === null || owner === name) versions[name] = version;
+        });
+        return { ...character, playerVersions: versions };
+      });
+    }
+
+    function acknowledgePersonalCharacterVersions(table, sent) {
+      Object.entries(sent).forEach(([id, versions]) => {
+        Object.entries(versions).forEach(([owner, version]) => {
+          if (JSON.stringify(table.pendingPlayerVersions?.[id]?.[owner]) === JSON.stringify(version)) {
+            delete table.pendingPlayerVersions[id][owner];
+            if (!Object.keys(table.pendingPlayerVersions[id]).length) delete table.pendingPlayerVersions[id];
+          }
+        });
+      });
+    }
 
     function iconTrash() {
       return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
@@ -2233,6 +2331,7 @@
       secretsBox.classList.toggle("hidden", secrets.length === 0);
       secretsList.innerHTML = secrets.map(secret => `<li><button class="secret-link" type="button" data-secret-jump="${escapeHtml(secret)}">${escapeHtml(secret)}</button></li>`).join("");
       bindSecretLinks();
+      renderPersonalCharacterNotes(character);
       renderCharacterMasterView(character);
       activePhotoIndex = 0;
       renderCharacterMedia();
@@ -2253,6 +2352,7 @@
     }
 
     function openAddCharacterModal() {
+      if (getActiveTable()?.role !== "master") return;
       editingCharacterId = null;
       document.querySelector("#addCharacterModalTitle").textContent = "Adicionar personagem";
       document.querySelector("#addCharacterModalTitle").nextElementSibling.textContent = "Crie um personagem dos jogadores ou um NPC importante para o elenco.";
@@ -2263,6 +2363,7 @@
     }
 
     function openEditCharacterModal() {
+      if (getActiveTable()?.role !== "master") return;
       const character = getCharacter(activeCharacterId);
       if (!character) return;
       editingCharacterId = character.id;
@@ -3513,6 +3614,7 @@
       renderPushSettings();
       const table = getActiveTable();
       const isMaster = table?.role === "master";
+      document.querySelector("#openAddCharacterModal").classList.toggle("hidden", !isMaster);
       document.querySelector('[data-view="master"]').classList.toggle("hidden", !isMaster);
       document.querySelector("#currentTableLabel").textContent = table ? tableIdentityLabel(table) : "";
       renderPlayerNavSubmenu();
@@ -3665,7 +3767,7 @@
                 <h3>${escapeHtml(player.character)}</h3>
                 <small>${escapeHtml(player.name)}</small>
               </div>
-              <button class="icon-btn" title="Remover" data-remove="players" data-id="${player.id}">${iconTrash()}</button>
+              ${activeTable?.role === "master" ? `<button class="icon-btn" title="Remover" data-remove="players" data-id="${player.id}">${iconTrash()}</button>` : ""}
             </header>
             <div class="character-card-body">
               <div class="character-card-copy">
@@ -3761,6 +3863,7 @@
       document.querySelectorAll("[data-remove]").forEach(button => {
         button.onclick = event => {
           event.stopPropagation();
+          if (button.dataset.remove === "players" && getActiveTable()?.role !== "master") return;
           removeFrom(button.dataset.remove, button.dataset.id);
         };
       });
@@ -4273,6 +4376,7 @@
     });
 
     document.querySelector("#addPlayer").addEventListener("click", () => {
+      if (getActiveTable()?.role !== "master") return;
       const existingCharacter = editingCharacterId ? getCharacter(editingCharacterId) : null;
       const player = {
         kind: document.querySelector("#characterKind").value,
@@ -4342,6 +4446,7 @@
       }
     });
     document.querySelector("#deleteCharacterFromModal").addEventListener("click", () => {
+      if (getActiveTable()?.role !== "master") return;
       if (activeCharacterId) {
         removeFrom("players", activeCharacterId);
       }
@@ -4467,6 +4572,15 @@
     // Diário de bordo das sessões
     let activeSessionId = null;
 
+
+    document.querySelector("#personalCharacterOwner").addEventListener("change", async event => {
+      if (personalCharacterDraftChanged() && !await askConfirm({ title: "Descartar rascunho?", message: "Salve antes de trocar de jogador, ou descarte as alterações.", confirmText: "Descartar" })) {
+        event.target.value = personalCharacterDraft.owner;
+        return;
+      }
+      renderPersonalCharacterNotes(getCharacter(activeCharacterId), event.target.value);
+    });
+    document.querySelector("#savePersonalCharacterNotes").addEventListener("click", savePersonalCharacterNotes);
 
     let pushOperationBusy = false;
     let pushOperationError = "";
