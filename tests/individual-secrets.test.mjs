@@ -36,7 +36,7 @@ function fixture(user = 'a', backend = new Map(), storage = new Map(), online = 
     async rpc(name, args) {
       calls.push({ name, args });
       if (failSave) return { error: { message: 'offline' } };
-      const key = `${args.campaign}:${args.character}:${args.recipient}`;
+      const key = `${args.campaign}:${args.target_character}:${args.recipient}`;
       const previous = backend.get(key);
       if ((previous?.revision || 0) !== args.expected_revision) return { error: { code: '40001' } };
       const record = { secrets: args.body, revision: args.expected_revision + 1 };

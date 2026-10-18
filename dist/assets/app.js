@@ -1931,7 +1931,7 @@
           const identity = await campaignIdentity(panel.table.onlineId);
           if (identity.user.id !== panel.userId) throw new Error("A conta mudou. Reabra o personagem antes de salvar.");
           const result = await getSupabaseClient().rpc("mesa_save_character_secrets", {
-            campaign: panel.table.onlineId, character: panel.characterId, recipient: panel.recipient,
+            campaign: panel.table.onlineId, target_character: panel.characterId, recipient: panel.recipient,
             body: secrets, expected_revision: panel.revision
           });
           if (result.error) throw result.error;

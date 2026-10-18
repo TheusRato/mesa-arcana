@@ -116,7 +116,7 @@ create policy secret_access on public.mesa_arcana_character_secrets for all to a
 
 -- Invoker rights preserve RLS. CAS prevents a stale device overwriting a newer revision.
 create or replace function public.mesa_save_character_secrets(
- campaign uuid, character text, recipient uuid, body jsonb, expected_revision bigint
+ campaign uuid, target_character text, recipient uuid, body jsonb, expected_revision bigint
 ) returns public.mesa_arcana_character_secrets language plpgsql security invoker set search_path = '' as $$
 declare result public.mesa_arcana_character_secrets;
 begin
@@ -125,10 +125,10 @@ begin
  end if;
  if expected_revision=0 then
   insert into public.mesa_arcana_character_secrets(table_id,character_id,player_id,secrets)
-   values(campaign,character,recipient,body) on conflict do nothing returning * into result;
+   values(campaign,target_character,recipient,body) on conflict do nothing returning * into result;
  else
   update public.mesa_arcana_character_secrets set secrets=body, revision=revision+1,updated_at=now()
-   where table_id=campaign and character_id=character and player_id=recipient and revision=expected_revision returning * into result;
+   where table_id=campaign and character_id=target_character and player_id=recipient and revision=expected_revision returning * into result;
  end if;
  if result.table_id is null then raise exception 'Secrets changed; reload before saving' using errcode='40001'; end if;
  return result;
