@@ -38,14 +38,14 @@
     }
 
     function getCharacterAnnotation(character) {
-      const owner = activePersonalOwner();
+      const owner = characterVersionOwner();
       if (!owner) return character?.annotations || "";
       const notes = character?.playerAnnotations || {};
       return notes[owner] ?? "";
     }
 
     function setCharacterAnnotation(character, value) {
-      const owner = activePersonalOwner();
+      const owner = characterVersionOwner();
       if (!character) return;
       if (!owner) {
         character.annotations = value;
@@ -72,27 +72,11 @@
     }
 
     function renderCharacterAnnotationPlayerSelect(character) {
-      const table = getActiveTable();
-      const box = document.querySelector("#characterAnnotationPlayerBox");
-      const select = document.querySelector("#characterAnnotationPlayerSelect");
-      const annotationsField = document.querySelector("#characterModalAnnotations");
-      if (table?.role !== "master") {
-        box.style.display = "none";
-        annotationsField.placeholder = "Anote aqui tudo que você descobriu, suspeita ou quer lembrar sobre esse personagem.";
-        return;
-      }
-      const profiles = playerSheetProfiles();
-      if (!profiles.length) {
-        activeMasterPlayerName = "";
-        box.style.display = "none";
-        annotationsField.placeholder = "Nenhum jogador entrou nesta mesa ainda.";
-        return;
-      }
-      ensureActiveMasterPlayer();
-      select.innerHTML = profiles.map(profile => `<option value="${escapeHtml(profile.name)}">${escapeHtml(profile.name)}</option>`).join("");
-      select.value = activeMasterPlayerName;
-      box.style.display = "block";
-      annotationsField.placeholder = `Anotações de ${activeMasterPlayerName || "jogador"} sobre ${character?.character || "este personagem"}.`;
+      document.querySelector("#characterAnnotationPlayerBox").style.display = "none";
+      const owner = characterVersionOwner();
+      document.querySelector("#characterModalAnnotations").placeholder = owner
+        ? `Anotações de ${owner} sobre ${character?.character || "este personagem"}.`
+        : "Anotações do mestre sobre este personagem.";
     }
 
     function renderSessionDiaryPlayerSelect(session) {
@@ -387,7 +371,7 @@
         ? photos.map((photo, index) => `
           <div class="gallery-item">
             <img src="${photo}" alt="Foto ${index + 1} de ${escapeHtml(character.character || "personagem")}">
-            <button class="btn danger" type="button" data-delete-photo="${index}">Excluir</button>
+            ${getActiveTable()?.role === "master" ? `<button class="btn danger" type="button" data-delete-photo="${index}">Excluir</button>` : ""}
           </div>`).join("")
         : empty("Nenhuma foto extra adicionada.");
       document.querySelectorAll("[data-delete-photo]").forEach(button => {
@@ -396,6 +380,7 @@
     }
 
     function deleteCharacterPhoto(index) {
+      if (getActiveTable()?.role !== "master") return;
       const character = getCharacter(activeCharacterId);
       if (!character) return;
       character.photos = (character.photos || []).filter((_, itemIndex) => itemIndex !== index);
@@ -405,9 +390,11 @@
       renderPhotoGallery();
     }
 
-    function openCharacterModal(id) {
-      const character = getCharacter(id);
-      if (!character) return;
+    function openCharacterModal(id, requestedOwner = "") {
+      const sourceCharacter = getCharacter(id);
+      if (!sourceCharacter) return;
+      renderCharacterVersionSelect(sourceCharacter, requestedOwner);
+      const character = characterForCurrentView(sourceCharacter);
       activeCharacterId = id;
       activeCharacterMasterView = false;
       document.querySelector("#characterModalTags").innerHTML = `
@@ -428,7 +415,6 @@
       secretsBox.classList.toggle("hidden", secrets.length === 0);
       secretsList.innerHTML = secrets.map(secret => `<li><button class="secret-link" type="button" data-secret-jump="${escapeHtml(secret)}">${escapeHtml(secret)}</button></li>`).join("");
       bindSecretLinks();
-      renderPersonalCharacterNotes(character);
       renderCharacterMasterView(character);
       activePhotoIndex = 0;
       renderCharacterMedia();
@@ -450,6 +436,8 @@
 
     function openAddCharacterModal() {
       if (getActiveTable()?.role !== "master") return;
+      document.querySelector("#newCharacterCover").closest("label").classList.remove("hidden");
+      document.querySelector("#characterEditStatus").textContent = "";
       editingCharacterId = null;
       document.querySelector("#addCharacterModalTitle").textContent = "Adicionar personagem";
       document.querySelector("#addCharacterModalTitle").nextElementSibling.textContent = "Crie um personagem dos jogadores ou um NPC importante para o elenco.";
@@ -460,13 +448,19 @@
     }
 
     function openEditCharacterModal() {
-      if (getActiveTable()?.role !== "master") return;
-      const character = getCharacter(activeCharacterId);
+      const sourceCharacter = getCharacter(activeCharacterId);
+      if (!sourceCharacter) return;
+      const personal = getActiveTable()?.role === "player";
+      const character = personal ? characterForCurrentView(sourceCharacter) : sourceCharacter;
       if (!character) return;
       editingCharacterId = character.id;
       newCharacterCover = character.cover || "";
       document.querySelector("#addCharacterModalTitle").textContent = "Editar personagem";
-      document.querySelector("#addCharacterModalTitle").nextElementSibling.textContent = "Atualize os detalhes deste personagem.";
+      document.querySelector("#addCharacterModalTitle").nextElementSibling.textContent = personal
+        ? "Suas alterações ficam na sua versão deste personagem."
+        : "Atualize os detalhes deste personagem.";
+      document.querySelector("#newCharacterCover").closest("label").classList.toggle("hidden", personal);
+      document.querySelector("#characterEditStatus").textContent = "";
       document.querySelector("#addPlayer").textContent = "Salvar alterações";
       document.querySelector("#characterKind").value = character.kind || "Jogador";
       document.querySelector("#playerName").value = character.name || "";
@@ -477,7 +471,7 @@
       renderSecretInputs(character.secrets || []);
       document.querySelector("#newCharacterCover").value = "";
       const preview = document.querySelector("#newCharacterCoverPreview");
-      preview.classList.toggle("hidden", !newCharacterCover);
+      preview.classList.toggle("hidden", personal || !newCharacterCover);
       preview.src = newCharacterCover || "";
       closeCharacterModal();
       document.querySelector("#addCharacterModal").classList.remove("hidden");
