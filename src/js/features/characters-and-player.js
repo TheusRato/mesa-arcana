@@ -55,19 +55,16 @@
     }
 
     function getSessionDiary(session) {
-      const owner = activePersonalOwner();
-      if (!owner) return session?.diary || "";
+      const owner = sessionDiaryOwner();
+      if (!owner) return "";
       const diaries = session?.playerDiaries || {};
       return diaries[owner] ?? "";
     }
 
     function setSessionDiary(session, value) {
-      const owner = activePersonalOwner();
+      const owner = sessionDiaryOwner();
       if (!session) return;
-      if (!owner) {
-        session.diary = value;
-        return;
-      }
+      if (!owner) return;
       session.playerDiaries = { ...(session.playerDiaries || {}), [owner]: value };
     }
 
@@ -80,31 +77,7 @@
     }
 
     function renderSessionDiaryPlayerSelect(session) {
-      const table = getActiveTable();
-      const box = document.querySelector("#sessionDiaryPlayerBox");
-      const select = document.querySelector("#sessionDiaryPlayerSelect");
-      const label = document.querySelector("#sessionDiaryLabel");
-      const diaryField = document.querySelector("#sessionDiaryInput");
-      if (table?.role !== "master") {
-        box.style.display = "none";
-        label.textContent = "Meu diário";
-        diaryField.placeholder = "Escreva aqui o que aconteceu na sessão pela sua visão...";
-        return;
-      }
-      const profiles = playerSheetProfiles();
-      if (!profiles.length) {
-        activeMasterPlayerName = "";
-        box.style.display = "none";
-        label.textContent = "Diário do jogador";
-        diaryField.placeholder = "Os jogadores aparecem aqui depois de entrar na mesa.";
-        return;
-      }
-      ensureActiveMasterPlayer();
-      select.innerHTML = profiles.map(profile => `<option value="${escapeHtml(profile.name)}">${escapeHtml(profile.name)}</option>`).join("");
-      select.value = activeMasterPlayerName;
-      box.style.display = "block";
-      label.textContent = `Diário de ${activeMasterPlayerName}`;
-      diaryField.placeholder = `Diário pessoal de ${activeMasterPlayerName} nesta sessão.`;
+      renderSessionDiarySelector(session);
     }
 
     function sessionHasDiary(session) {

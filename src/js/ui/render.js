@@ -3,6 +3,7 @@
       const table = getActiveTable();
       const isMaster = table?.role === "master";
       document.querySelector("#openAddCharacterModal").classList.toggle("hidden", !isMaster);
+      document.querySelector("#addSessionBtn").classList.toggle("hidden", !isMaster);
       document.querySelector('[data-view="master"]').classList.toggle("hidden", !isMaster);
       document.querySelector("#currentTableLabel").textContent = table ? tableIdentityLabel(table) : "";
       renderPlayerNavSubmenu();
