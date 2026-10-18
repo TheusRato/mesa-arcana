@@ -5,7 +5,7 @@
     "js/ui/dialogs.js",
     "js/features/messages.js",
     "js/services/cloud.js",
-    "js/services/individual-secrets.js",
+    "js/services/personal-character-notes.js",
     "js/features/characters-and-player.js",
     "js/features/master.js",
     "js/features/player-files.js",
@@ -24,7 +24,5 @@
     "styles/responsive.css",
     "styles/themes.css"
   ],
-  "theme.js": [
-    "js/ui/theme.js"
-  ]
+  "theme.js": ["js/ui/theme.js"]
 }

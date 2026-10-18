@@ -487,6 +487,7 @@
     });
 
     document.querySelector("#addPlayer").addEventListener("click", () => {
+      if (getActiveTable()?.role !== "master") return;
       const existingCharacter = editingCharacterId ? getCharacter(editingCharacterId) : null;
       const player = {
         kind: document.querySelector("#characterKind").value,
@@ -556,6 +557,7 @@
       }
     });
     document.querySelector("#deleteCharacterFromModal").addEventListener("click", () => {
+      if (getActiveTable()?.role !== "master") return;
       if (activeCharacterId) {
         removeFrom("players", activeCharacterId);
       }
@@ -682,14 +684,11 @@
     let activeSessionId = null;
 
 
-    document.querySelector("#saveIndividualSecrets").addEventListener("click", saveIndividualSecrets);
-    document.querySelector("#individualSecretsPlayer").addEventListener("change", event => loadIndividualSecrets(event.target.value));
-    document.querySelector("#reloadIndividualSecrets").addEventListener("click", () => loadIndividualSecrets(document.querySelector("#individualSecretsPlayer").value));
-    document.querySelector("#loginCloudAccount").addEventListener("click", loginCloudAccount);
-    document.querySelector("#addVerifiedPlayer").addEventListener("click", addVerifiedPlayer);
-    document.querySelector("#logoutCloudAccount").addEventListener("click", async () => {
-      clearIndividualSecrets();
-      const client = getSupabaseClient();
-      if (client) await client.auth.signOut();
-      setSupabaseStatus("Conta desconectada", "local");
+    document.querySelector("#personalCharacterOwner").addEventListener("change", async event => {
+      if (personalCharacterDraftChanged() && !await askConfirm({ title: "Descartar rascunho?", message: "Salve antes de trocar de jogador, ou descarte as alterações.", confirmText: "Descartar" })) {
+        event.target.value = personalCharacterDraft.owner;
+        return;
+      }
+      renderPersonalCharacterNotes(getCharacter(activeCharacterId), event.target.value);
     });
+    document.querySelector("#savePersonalCharacterNotes").addEventListener("click", savePersonalCharacterNotes);

@@ -63,7 +63,6 @@
     }
 
     function showLauncher() {
-      clearIndividualSecrets();
       stopCloudAutoRefresh();
       activeTableId = null;
       removeLocalValue(activeTableStoreKey);
@@ -73,7 +72,6 @@
     }
 
     function openTable(id) {
-      clearIndividualSecrets();
       const table = tableRegistry.find(item => item.id === id);
       if (!table) {
         showLauncher();
@@ -140,8 +138,6 @@
         return false;
       }
       try {
-        const identity = await campaignIdentity(invite.tableId, true);
-        if (invite.role === "master" && identity.role !== "master") throw new Error("Conta não é o mestre desta campanha.");
         const { data: remoteTable, error } = await client
           .from("mesa_arcana_tables")
           .select("id,name,data,updated_at")
@@ -177,7 +173,7 @@
         return true;
       } catch (error) {
         console.warn("Erro ao validar convite.", error);
-        setDialogError("joinTableError", error.message || "Não foi possível validar o convite.");
+        setDialogError("joinTableError", "Não consegui validar esse convite. Confere se a mesa existe e se a internet está ok.");
         return false;
       }
     }
@@ -227,8 +223,6 @@
         return false;
       }
       try {
-        const identity = await campaignIdentity(invite.tableId, true);
-        if (invite.role === "master" && identity.role !== "master") throw new Error("Conta não é o mestre desta campanha.");
         const { data: remoteTable, error } = await client
           .from("mesa_arcana_tables")
           .select("id,name,data,updated_at")
@@ -262,10 +256,6 @@
           return false;
         }
         const playerName = characterName.trim();
-        if (identity.role !== "player" || identity.name !== playerName) {
-          fail("Use o nome vinculado à sua conta pelo mestre.");
-          return false;
-        }
         let nextRemoteData = remoteData;
         let profile = safeList(nextRemoteData.playerProfiles).find(item => item.name === playerName);
         if (profile?.pinHash) {
@@ -318,7 +308,7 @@
         return true;
       } catch (error) {
         console.warn("Erro ao entrar na mesa online.", error);
-        fail(error.message || "Não foi possível entrar nesta mesa.");
+        fail("Não consegui entrar nessa mesa. Confere se o código está correto.");
         return false;
       }
     }

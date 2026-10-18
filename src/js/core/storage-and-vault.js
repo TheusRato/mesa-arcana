@@ -466,8 +466,7 @@
         activeTable.data = normalizeData(data);
         activeTable.name = activeTable.data.campaign.name || activeTable.name || "Mesa sem nome";
         activeTable.updatedAt = new Date().toISOString();
-        saveTableRegistry();
-        return true;
+        return saveTableRegistry();
       } catch (error) {
         console.warn("Não foi possível salvar todos os dados neste navegador.", error);
         return false;

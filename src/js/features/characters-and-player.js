@@ -428,7 +428,7 @@
       secretsBox.classList.toggle("hidden", secrets.length === 0);
       secretsList.innerHTML = secrets.map(secret => `<li><button class="secret-link" type="button" data-secret-jump="${escapeHtml(secret)}">${escapeHtml(secret)}</button></li>`).join("");
       bindSecretLinks();
-      loadIndividualSecrets("", true);
+      renderPersonalCharacterNotes(character);
       renderCharacterMasterView(character);
       activePhotoIndex = 0;
       renderCharacterMedia();
@@ -442,7 +442,6 @@
     }
 
     function closeCharacterModal() {
-      clearIndividualSecrets();
       activeCharacterId = null;
       activeCharacterMasterView = false;
       closePhotoGallery();
@@ -450,6 +449,7 @@
     }
 
     function openAddCharacterModal() {
+      if (getActiveTable()?.role !== "master") return;
       editingCharacterId = null;
       document.querySelector("#addCharacterModalTitle").textContent = "Adicionar personagem";
       document.querySelector("#addCharacterModalTitle").nextElementSibling.textContent = "Crie um personagem dos jogadores ou um NPC importante para o elenco.";
@@ -460,6 +460,7 @@
     }
 
     function openEditCharacterModal() {
+      if (getActiveTable()?.role !== "master") return;
       const character = getCharacter(activeCharacterId);
       if (!character) return;
       editingCharacterId = character.id;
