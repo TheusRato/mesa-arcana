@@ -32,7 +32,7 @@ function fixture(owner = 'Ana', role = 'player', backend = null) {
     playerSheetProfiles: () => [{ name: 'Ana' }, { name: 'Beto' }], escapeHtml: String, currentPlayerOwner: () => owner,
     window: { clearTimeout() {}, setTimeout() {} }, cloudChangeVersion: 1, isSavingCloud: false, cloudSaveTimer: null,
     setSupabaseStatus() {}, saveTableRegistry: () => true });
-  for (const path of ['core/storage-and-vault.js', 'services/cloud.js', 'services/personal-character-notes.js']) vm.runInContext(read(path), scope);
+  for (const path of ['core/storage-and-vault.js', 'services/cloud.js', 'services/session-sync.js', 'services/personal-character-notes.js']) vm.runInContext(read(path), scope);
   scope.getActiveTable = () => table;
   scope.saveTableRegistry = () => true;
   scope.getSupabaseClient = () => client;

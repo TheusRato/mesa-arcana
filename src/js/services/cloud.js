@@ -151,6 +151,7 @@
       try {
         const snapshot = JSON.parse(JSON.stringify(data));
         const pending = JSON.parse(JSON.stringify(activeTable.pendingPlayerVersions || {}));
+        const pendingSessions = JSON.parse(JSON.stringify(activeTable.pendingSessions || {}));
         let nextData, savedRow;
         for (let attempt = 0; attempt < 5; attempt++) {
           const { data: remoteTable, error: readError } = await client
@@ -159,6 +160,7 @@
           nextData = activeTable.role === "master"
             ? await cloudDataForMaster(activeTable, snapshot)
             : mergePlayerWritableData(remoteTable.data || initialData, snapshot);
+          nextData.sessions = mergePendingSessions(remoteTable.data?.sessions, snapshot.sessions, pendingSessions, activeTable.role, activeTable.playerName);
           nextData.players = mergePersonalCharacterVersions(
             remoteTable.data?.players, nextData.players, pending,
             activeTable.role === "master" ? null : activeTable.playerName
@@ -172,9 +174,11 @@
         }
         if (!savedRow) throw new Error("A mesa está recebendo outras alterações. Tente salvar novamente; sua versão permanece neste dispositivo.");
         acknowledgePersonalCharacterVersions(activeTable, pending);
+        acknowledgeSessionChanges(activeTable, pendingSessions);
         if (saveVersion === cloudChangeVersion) activeTable.pendingCloudSave = false;
         // Keep edits made while this request was in flight and incorporate other players' versions.
         if (getActiveTable() === activeTable) {
+          data.sessions = mergePendingSessions(nextData.sessions, data.sessions, activeTable.pendingSessions || {}, activeTable.role, activeTable.playerName);
           data.players = mergePersonalCharacterVersions(nextData.players, data.players, activeTable.pendingPlayerVersions || {});
           activeTable.data = normalizeData(data);
         }
@@ -196,7 +200,7 @@
       const owner = currentPlayerOwner();
       return normalizeData({
         ...remoteData,
-        sessions: mergeSessionDiaries(remoteData.sessions, playerData.sessions, owner),
+        sessions: remoteData.sessions,
         players: mergeCharacterAnnotations(remoteData.players, playerData.players, owner),
         playerInventory: mergeOwnedCollection(remoteData.playerInventory, playerData.playerInventory, owner),
         playerRelations: mergeOwnedCollection(remoteData.playerRelations, playerData.playerRelations, owner),
@@ -294,7 +298,7 @@
         if (error) throw error;
         const remoteUpdatedAt = remoteTable.updated_at || new Date().toISOString();
         const localUpdatedAt = activeTable.updatedAt || "";
-        const hasRemoteChange = force || !localUpdatedAt || new Date(remoteUpdatedAt) > new Date(localUpdatedAt);
+        const hasRemoteChange = force || remoteUpdatedAt !== localUpdatedAt;
         if (!hasRemoteChange) {
           if (!silent) setSupabaseStatus("Mesa já está atualizada", "synced");
           return false;
@@ -309,6 +313,7 @@
         saveTableRegistry();
         render();
         renderSessions();
+        refreshOpenSession();
         setSupabaseStatus(silent ? "Mesa atualizada automaticamente" : "Mesa carregada da nuvem", "synced");
         return true;
       } catch (error) {

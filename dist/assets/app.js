@@ -1607,6 +1607,7 @@
       try {
         const snapshot = JSON.parse(JSON.stringify(data));
         const pending = JSON.parse(JSON.stringify(activeTable.pendingPlayerVersions || {}));
+        const pendingSessions = JSON.parse(JSON.stringify(activeTable.pendingSessions || {}));
         let nextData, savedRow;
         for (let attempt = 0; attempt < 5; attempt++) {
           const { data: remoteTable, error: readError } = await client
@@ -1615,6 +1616,7 @@
           nextData = activeTable.role === "master"
             ? await cloudDataForMaster(activeTable, snapshot)
             : mergePlayerWritableData(remoteTable.data || initialData, snapshot);
+          nextData.sessions = mergePendingSessions(remoteTable.data?.sessions, snapshot.sessions, pendingSessions, activeTable.role, activeTable.playerName);
           nextData.players = mergePersonalCharacterVersions(
             remoteTable.data?.players, nextData.players, pending,
             activeTable.role === "master" ? null : activeTable.playerName
@@ -1628,9 +1630,11 @@
         }
         if (!savedRow) throw new Error("A mesa está recebendo outras alterações. Tente salvar novamente; sua versão permanece neste dispositivo.");
         acknowledgePersonalCharacterVersions(activeTable, pending);
+        acknowledgeSessionChanges(activeTable, pendingSessions);
         if (saveVersion === cloudChangeVersion) activeTable.pendingCloudSave = false;
         // Keep edits made while this request was in flight and incorporate other players' versions.
         if (getActiveTable() === activeTable) {
+          data.sessions = mergePendingSessions(nextData.sessions, data.sessions, activeTable.pendingSessions || {}, activeTable.role, activeTable.playerName);
           data.players = mergePersonalCharacterVersions(nextData.players, data.players, activeTable.pendingPlayerVersions || {});
           activeTable.data = normalizeData(data);
         }
@@ -1652,7 +1656,7 @@
       const owner = currentPlayerOwner();
       return normalizeData({
         ...remoteData,
-        sessions: mergeSessionDiaries(remoteData.sessions, playerData.sessions, owner),
+        sessions: remoteData.sessions,
         players: mergeCharacterAnnotations(remoteData.players, playerData.players, owner),
         playerInventory: mergeOwnedCollection(remoteData.playerInventory, playerData.playerInventory, owner),
         playerRelations: mergeOwnedCollection(remoteData.playerRelations, playerData.playerRelations, owner),
@@ -1750,7 +1754,7 @@
         if (error) throw error;
         const remoteUpdatedAt = remoteTable.updated_at || new Date().toISOString();
         const localUpdatedAt = activeTable.updatedAt || "";
-        const hasRemoteChange = force || !localUpdatedAt || new Date(remoteUpdatedAt) > new Date(localUpdatedAt);
+        const hasRemoteChange = force || remoteUpdatedAt !== localUpdatedAt;
         if (!hasRemoteChange) {
           if (!silent) setSupabaseStatus("Mesa já está atualizada", "synced");
           return false;
@@ -1765,6 +1769,7 @@
         saveTableRegistry();
         render();
         renderSessions();
+        refreshOpenSession();
         setSupabaseStatus(silent ? "Mesa atualizada automaticamente" : "Mesa carregada da nuvem", "synced");
         return true;
       } catch (error) {
@@ -1809,6 +1814,54 @@
       cloudSaveTimer = window.setTimeout(saveOnlineTable, 1200);
     }
 
+
+    // Session changes are explicit: an unrelated/profile save must never re-send stale diaries.
+    function queueSessionChange(id, fields = {}, diaries = {}, options = {}) {
+      const table = getActiveTable();
+      if (!table) return;
+      const old = table.pendingSessions?.[id] || {};
+      table.pendingSessions = { ...(table.pendingSessions || {}), [id]: {
+        ...old, ...options, fields: { ...(old.fields || {}), ...fields },
+        diaries: { ...(old.diaries || {}), ...diaries }
+      } };
+    }
+
+    function mergePendingSessions(remoteSessions, localSessions, pending = {}, role = "player", owner = "") {
+      const localById = new Map(safeList(localSessions).map(session => [session.id, session]));
+      const result = safeList(remoteSessions).map(session => ({ ...session, playerDiaries: { ...(session.playerDiaries || {}) } }));
+      if (role === "master") Object.entries(pending).forEach(([id, change]) => {
+        if (change.created && !change.deleted && !result.some(session => session.id === id)) {
+          const local = localById.get(id) || change.created;
+          result.push({ ...local, playerDiaries: { ...(local.playerDiaries || {}) } });
+        }
+      });
+      return result.filter(session => role !== "master" || !pending[session.id]?.deleted).map(session => {
+        const change = pending[session.id];
+        if (!change) return session;
+        const next = { ...session, playerDiaries: { ...(session.playerDiaries || {}) } };
+        if (role === "master") for (const key of ["title", "date", "diary"]) {
+          if (Object.hasOwn(change.fields || {}, key)) next[key] = change.fields[key];
+        }
+        Object.entries(change.diaries || {}).forEach(([name, text]) => {
+          if (name && (role === "master" || name === owner)) next.playerDiaries[name] = text;
+        });
+        return next;
+      });
+    }
+
+    function acknowledgeSessionChanges(table, sent) {
+      Object.entries(sent).forEach(([id, change]) => {
+        const current = table.pendingSessions?.[id];
+        if (!current) return;
+        for (const category of ["fields", "diaries"]) Object.entries(change[category] || {}).forEach(([key, value]) => {
+          if (current[category]?.[key] === value) delete current[category][key];
+        });
+        for (const key of ["created", "deleted"]) {
+          if (JSON.stringify(current[key]) === JSON.stringify(change[key])) delete current[key];
+        }
+        if (!Object.keys(current.fields || {}).length && !Object.keys(current.diaries || {}).length && !current.created && !current.deleted) delete table.pendingSessions[id];
+      });
+    }
 
     // PIN edition: names select versions in the UI, not database access control.
     let characterViewOwner = "";
@@ -1948,19 +2001,16 @@
     }
 
     function getSessionDiary(session) {
-      const owner = activePersonalOwner();
-      if (!owner) return session?.diary || "";
+      const owner = sessionDiaryOwner();
+      if (!owner) return "";
       const diaries = session?.playerDiaries || {};
       return diaries[owner] ?? "";
     }
 
     function setSessionDiary(session, value) {
-      const owner = activePersonalOwner();
+      const owner = sessionDiaryOwner();
       if (!session) return;
-      if (!owner) {
-        session.diary = value;
-        return;
-      }
+      if (!owner) return;
       session.playerDiaries = { ...(session.playerDiaries || {}), [owner]: value };
     }
 
@@ -1973,31 +2023,7 @@
     }
 
     function renderSessionDiaryPlayerSelect(session) {
-      const table = getActiveTable();
-      const box = document.querySelector("#sessionDiaryPlayerBox");
-      const select = document.querySelector("#sessionDiaryPlayerSelect");
-      const label = document.querySelector("#sessionDiaryLabel");
-      const diaryField = document.querySelector("#sessionDiaryInput");
-      if (table?.role !== "master") {
-        box.style.display = "none";
-        label.textContent = "Meu diário";
-        diaryField.placeholder = "Escreva aqui o que aconteceu na sessão pela sua visão...";
-        return;
-      }
-      const profiles = playerSheetProfiles();
-      if (!profiles.length) {
-        activeMasterPlayerName = "";
-        box.style.display = "none";
-        label.textContent = "Diário do jogador";
-        diaryField.placeholder = "Os jogadores aparecem aqui depois de entrar na mesa.";
-        return;
-      }
-      ensureActiveMasterPlayer();
-      select.innerHTML = profiles.map(profile => `<option value="${escapeHtml(profile.name)}">${escapeHtml(profile.name)}</option>`).join("");
-      select.value = activeMasterPlayerName;
-      box.style.display = "block";
-      label.textContent = `Diário de ${activeMasterPlayerName}`;
-      diaryField.placeholder = `Diário pessoal de ${activeMasterPlayerName} nesta sessão.`;
+      renderSessionDiarySelector(session);
     }
 
     function sessionHasDiary(session) {
@@ -3599,6 +3625,7 @@
       const table = getActiveTable();
       const isMaster = table?.role === "master";
       document.querySelector("#openAddCharacterModal").classList.toggle("hidden", !isMaster);
+      document.querySelector("#addSessionBtn").classList.toggle("hidden", !isMaster);
       document.querySelector('[data-view="master"]').classList.toggle("hidden", !isMaster);
       document.querySelector("#currentTableLabel").textContent = table ? tableIdentityLabel(table) : "";
       renderPlayerNavSubmenu();
@@ -4745,77 +4772,165 @@
       });
     }
 
+    let sessionDraft = null;
+
+    function sessionDiaryOwner() {
+      const table = getActiveTable();
+      return table?.role === "player" ? table.playerName || "" : sessionDraft?.owner || "";
+    }
+
+    function sessionDiaryOwners(session) {
+      return [...new Set([
+        ...playerSheetProfiles().map(profile => profile.name),
+        ...Object.keys(session?.playerDiaries || {}),
+        ...Object.keys(sessionDraft?.diaryDrafts || {})
+      ].filter(Boolean))];
+    }
+
+    function renderSessionDiarySelector(session) {
+      const master = getActiveTable()?.role === "master";
+      const owners = sessionDiaryOwners(session);
+      if (master && sessionDraft && !owners.includes(sessionDraft.owner)) sessionDraft.owner = owners[0] || "";
+      const owner = sessionDiaryOwner();
+      const select = document.getElementById("sessionDiaryPlayerSelect");
+      select.innerHTML = owners.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
+      select.value = owner;
+      document.getElementById("sessionDiaryPlayerBox").style.display = master && owners.length ? "block" : "none";
+      document.getElementById("sessionDiaryLabel").textContent = master ? (owner ? `Diário de ${owner}` : "Diário do jogador") : "Diário do personagem";
+      const field = document.getElementById("sessionDiaryInput");
+      field.disabled = !owner;
+      field.placeholder = owner ? `Diário de ${owner} nesta sessão.` : "Os diários aparecerão quando houver jogadores nesta mesa.";
+    }
+
+    function loadSelectedSessionDiary(session) {
+      const owner = sessionDiaryOwner();
+      if (!sessionDraft || !owner) { document.getElementById("sessionDiaryInput").value = ""; return; }
+      if (!Object.hasOwn(sessionDraft.loadedDiaries, owner)) sessionDraft.loadedDiaries[owner] = session.playerDiaries?.[owner] ?? "";
+      document.getElementById("sessionDiaryInput").value = sessionDraft.diaryDrafts[owner] ?? session.playerDiaries?.[owner] ?? "";
+    }
+
+    function captureSessionDiaryDraft() {
+      const owner = sessionDiaryOwner();
+      if (!sessionDraft || !owner) return;
+      const text = document.getElementById("sessionDiaryInput").value;
+      if (text !== (sessionDraft.loadedDiaries[owner] ?? "")) sessionDraft.diaryDrafts[owner] = text;
+      else delete sessionDraft.diaryDrafts[owner];
+    }
+
     function openSession(id) {
       ensureSessions();
       const session = data.sessions.find(item => item.id === id);
       if (!session) return;
       activeSessionId = id;
+      sessionDraft = { owner: "", base: { title: session.title || "", date: session.date || "", diary: session.diary || "" }, loadedDiaries: {}, diaryDrafts: {} };
+      const master = getActiveTable()?.role === "master";
       document.getElementById("sessionModalTitle").textContent = session.title || "Sessão";
       document.getElementById("sessionModalDateLabel").textContent = formatSessionDate(session.date);
-      document.getElementById("sessionTitleInput").value = session.title || "";
-      document.getElementById("sessionDateInput").value = session.date || "";
-      document.getElementById("sessionSummaryInput").value = session.diary || "";
-      renderSessionDiaryPlayerSelect(session);
-      document.getElementById("sessionDiaryInput").value = getSessionDiary(session);
+      for (const [key, id] of [["title", "sessionTitleInput"], ["date", "sessionDateInput"], ["diary", "sessionSummaryInput"]]) {
+        const field = document.getElementById(id);
+        field.value = sessionDraft.base[key];
+        field.readOnly = !master;
+      }
+      document.getElementById("deleteSessionBtn").classList.toggle("hidden", !master);
+      document.getElementById("sessionSaveStatus").textContent = "";
+      renderSessionDiarySelector(session);
+      loadSelectedSessionDiary(session);
       document.getElementById("sessionModal").classList.remove("hidden");
+    }
+
+    function refreshOpenSession() {
+      if (!activeSessionId || !sessionDraft) return;
+      const session = data.sessions.find(item => item.id === activeSessionId);
+      if (!session) {
+        document.getElementById("sessionSaveStatus").textContent = "Esta sessão foi removida em outro dispositivo. Copie seu rascunho antes de fechar.";
+        return;
+      }
+      captureSessionDiaryDraft();
+      for (const [key, id] of [["title", "sessionTitleInput"], ["date", "sessionDateInput"], ["diary", "sessionSummaryInput"]]) {
+        const field = document.getElementById(id);
+        if (getActiveTable()?.role === "player" || field.value === sessionDraft.base[key]) {
+          field.value = session[key] || "";
+          sessionDraft.base[key] = field.value;
+        }
+      }
+      renderSessionDiarySelector(session);
+      const owner = sessionDiaryOwner();
+      if (owner && !Object.hasOwn(sessionDraft.diaryDrafts, owner)) sessionDraft.loadedDiaries[owner] = session.playerDiaries?.[owner] ?? "";
+      loadSelectedSessionDiary(session);
+      document.getElementById("sessionModalTitle").textContent = session.title || "Sessão";
+      document.getElementById("sessionModalDateLabel").textContent = formatSessionDate(session.date);
     }
 
     function closeSession() {
       document.getElementById("sessionModal").classList.add("hidden");
       activeSessionId = null;
+      sessionDraft = null;
+    }
+
+    function persistSessionEdit() {
+      if (!persistLocalData()) {
+        document.getElementById("sessionSaveStatus").textContent = "Não foi possível salvar neste dispositivo. Seu rascunho continua aberto; tente novamente.";
+        return false;
+      }
+      scheduleCloudTableSave();
+      renderSessions();
+      // Start the upload now; pending changes also survive a reload before it completes.
+      if (getActiveTable()?.onlineId) saveOnlineTable();
+      return true;
     }
 
     document.getElementById("addSessionBtn")?.addEventListener("click", () => {
+      if (getActiveTable()?.role !== "master") return;
       ensureSessions();
-      const number = data.sessions.length + 1;
-      const session = {
-        id: createId(),
-        title: `Sessão ${String(number).padStart(2, "0")}`,
-        date: "",
-        diary: "",
-        playerDiaries: {}
-      };
+      const session = { id: createId(), title: `Sessão ${String(data.sessions.length + 1).padStart(2, "0")}`, date: "", diary: "", playerDiaries: {} };
       data.sessions.push(session);
-      save();
-      renderSessions();
-      openSession(session.id);
+      queueSessionChange(session.id, {}, {}, { created: { ...session } });
+      if (persistSessionEdit()) openSession(session.id);
     });
 
     document.getElementById("saveSessionBtn")?.addEventListener("click", () => {
       const session = data.sessions.find(item => item.id === activeSessionId);
-      if (!session) return;
-      session.title = document.getElementById("sessionTitleInput").value.trim() || "Sessão";
-      session.date = document.getElementById("sessionDateInput").value;
-      session.diary = document.getElementById("sessionSummaryInput").value;
-      setSessionDiary(session, document.getElementById("sessionDiaryInput").value);
-      save();
-      renderSessions();
-      closeSession();
+      if (!session || !sessionDraft) return;
+      captureSessionDiaryDraft();
+      const fields = {};
+      if (getActiveTable()?.role === "master") {
+        for (const [key, id] of [["title", "sessionTitleInput"], ["date", "sessionDateInput"], ["diary", "sessionSummaryInput"]]) {
+          const value = document.getElementById(id).value;
+          if (value !== sessionDraft.base[key]) fields[key] = key === "title" ? value.trim() || "Sessão" : value;
+        }
+      }
+      const diaries = { ...sessionDraft.diaryDrafts };
+      Object.assign(session, fields);
+      session.playerDiaries = { ...(session.playerDiaries || {}), ...diaries };
+      queueSessionChange(session.id, fields, diaries);
+      if (persistSessionEdit()) closeSession();
     });
 
     document.getElementById("sessionDiaryPlayerSelect")?.addEventListener("change", event => {
+      if (getActiveTable()?.role !== "master" || !sessionDraft) return;
       const session = data.sessions.find(item => item.id === activeSessionId);
       if (!session) return;
-      activeMasterPlayerName = event.target.value;
-      renderSessionDiaryPlayerSelect(session);
-      const diaryField = document.getElementById("sessionDiaryInput");
-      diaryField.value = getSessionDiary(session);
-      autoResizeTextarea(diaryField);
+      captureSessionDiaryDraft();
+      const owner = event.target.value;
+      if (!sessionDiaryOwners(session).includes(owner)) return;
+      sessionDraft.owner = owner;
+      renderSessionDiarySelector(session);
+      loadSelectedSessionDiary(session);
+      autoResizeTextarea(document.getElementById("sessionDiaryInput"));
     });
 
     document.getElementById("deleteSessionBtn")?.addEventListener("click", () => {
-      if (!activeSessionId) return;
-      data.sessions = data.sessions.filter(item => item.id !== activeSessionId);
-      save();
-      renderSessions();
-      closeSession();
+      if (!activeSessionId || getActiveTable()?.role !== "master") return;
+      const id = activeSessionId;
+      data.sessions = data.sessions.filter(item => item.id !== id);
+      queueSessionChange(id, {}, {}, { deleted: true });
+      if (persistSessionEdit()) closeSession();
     });
 
     document.getElementById("closeSessionModal")?.addEventListener("click", closeSession);
     document.getElementById("sessionModal")?.addEventListener("click", event => {
       if (event.target.id === "sessionModal") closeSession();
     });
-
 
     initializeApp();
     openPushConversation();
