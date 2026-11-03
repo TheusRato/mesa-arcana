@@ -159,6 +159,26 @@
         if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
       }
     });
+    document.querySelector("#messageThread").addEventListener("click", event => {
+      const button = event.target.closest("[data-edit-message], [data-hide-message]");
+      if (!button) return;
+      if (button.dataset.editMessage) openEditMessage(button.dataset.editMessage);
+      else hideMasterMessage(button.dataset.hideMessage);
+    });
+    document.querySelector("#cancelEditMessage").addEventListener("click", closeEditMessage);
+    document.querySelector("#saveEditedMessage").addEventListener("click", saveEditedMessage);
+    document.querySelector("#editMessageModal").addEventListener("click", event => {
+      if (event.target.id === "editMessageModal") closeEditMessage();
+    });
+    document.querySelector("#editMessageModal").addEventListener("keydown", event => {
+      if (event.key === "Escape") closeEditMessage();
+      if (event.key === "Tab") {
+        const first = document.querySelector("#editMessageBody");
+        const last = document.querySelector("#saveEditedMessage");
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    });
     document.querySelector("#messageBackBtn").addEventListener("click", closeMessageChat);
     document.querySelector("#openGroupModal").addEventListener("click", openGroupModal);
     document.querySelector("#closeGroupModal").addEventListener("click", closeGroupModal);

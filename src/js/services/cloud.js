@@ -152,6 +152,7 @@
         const snapshot = JSON.parse(JSON.stringify(data));
         const pending = JSON.parse(JSON.stringify(activeTable.pendingPlayerVersions || {}));
         const pendingSessions = JSON.parse(JSON.stringify(activeTable.pendingSessions || {}));
+        const pendingMessages = JSON.parse(JSON.stringify(activeTable.pendingMessageChanges || {}));
         let nextData, savedRow;
         for (let attempt = 0; attempt < 5; attempt++) {
           const { data: remoteTable, error: readError } = await client
@@ -160,6 +161,10 @@
           nextData = activeTable.role === "master"
             ? await cloudDataForMaster(activeTable, snapshot)
             : mergePlayerWritableData(remoteTable.data || initialData, snapshot);
+          nextData.messageOverrides = {
+            ...normalizeMessageOverrides(remoteTable.data?.messageOverrides),
+            ...(activeTable.role === "master" ? normalizeMessageOverrides(pendingMessages) : {})
+          };
           nextData.sessions = mergePendingSessions(remoteTable.data?.sessions, snapshot.sessions, pendingSessions, activeTable.role, activeTable.playerName);
           nextData.players = mergePersonalCharacterVersions(
             remoteTable.data?.players, nextData.players, pending,
@@ -175,9 +180,14 @@
         if (!savedRow) throw new Error("A mesa está recebendo outras alterações. Tente salvar novamente; sua versão permanece neste dispositivo.");
         acknowledgePersonalCharacterVersions(activeTable, pending);
         acknowledgeSessionChanges(activeTable, pendingSessions);
+        acknowledgeMessageChanges(activeTable, pendingMessages);
         if (saveVersion === cloudChangeVersion) activeTable.pendingCloudSave = false;
         // Keep edits made while this request was in flight and incorporate other players' versions.
         if (getActiveTable() === activeTable) {
+          data.messageOverrides = {
+            ...nextData.messageOverrides,
+            ...normalizeMessageOverrides(activeTable.pendingMessageChanges)
+          };
           data.sessions = mergePendingSessions(nextData.sessions, data.sessions, activeTable.pendingSessions || {}, activeTable.role, activeTable.playerName);
           data.players = mergePersonalCharacterVersions(nextData.players, data.players, activeTable.pendingPlayerVersions || {});
           activeTable.data = normalizeData(data);
@@ -211,6 +221,7 @@
         masterVault: remoteData.masterVault,
         allowedContacts: remoteData.allowedContacts,
         messageGroups: remoteData.messageGroups,
+        messageOverrides: remoteData.messageOverrides,
         library: playerData.library
       });
     }
@@ -356,5 +367,14 @@
       window.clearTimeout(cloudSaveTimer);
       setSupabaseStatus(activeTable.role === "master" ? "Salvando na nuvem..." : "Enviando alteracoes...");
       cloudSaveTimer = window.setTimeout(saveOnlineTable, 1200);
+    }
+
+
+    function acknowledgeMessageChanges(table, uploaded) {
+      const pending = table.pendingMessageChanges || {};
+      for (const [id, change] of Object.entries(uploaded)) {
+        if (JSON.stringify(pending[id]) === JSON.stringify(change)) delete pending[id];
+      }
+      table.pendingMessageChanges = pending;
     }
 

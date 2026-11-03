@@ -52,3 +52,9 @@
     @media (max-width: 760px) {
       #groupDetailsModal .group-details-screen { height: 100dvh; max-height: 100dvh; border-radius: 0; }
     }
+
+    .message-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .message-master-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .message-master-actions .btn { padding: 5px 10px; font-size: .8rem; min-height: 34px; }
+    #editMessageModal { z-index: 35; }
+    #editMessageBody { width: 100%; min-height: 150px; resize: vertical; }

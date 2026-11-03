@@ -353,14 +353,9 @@
           .eq("conversation_id", conversationId)
           .order("created_at", { ascending: true });
         if (error) throw error;
-        thread.innerHTML = messages?.length
-          ? messages.map(message => `
-            <article class="message-bubble ${message.sender_role === "player" ? "player" : "npc"}">
-              <small>${escapeHtml(message.sender_name)} · ${formatMessageTime(message.created_at)}</small>
-              ${escapeHtml(message.body)}
-            </article>
-          `).join("")
-          : empty("Nenhuma mensagem ainda.");
+        if (getActiveTable() !== table || activeConversationId !== conversationId) return;
+        loadedMessageContext = { tableId: table.id, conversationId, messages: safeList(messages) };
+        renderConversationMessages();
         thread.scrollTop = thread.scrollHeight;
         if (!silent) setMessageStatus("Conversa atualizada", "synced");
       } catch (error) {
@@ -663,4 +658,110 @@
         closeAddGroupPeople();
         document.querySelector("#closeGroupDetails").focus();
       }
+    }
+
+    let loadedMessageContext = null;
+    let editingMessage = null;
+
+    function messageOverrideFor(message, conversationId) {
+      if (!["npc", "master"].includes(message.sender_role)) return null;
+      const change = normalizeMessageOverrides(data.messageOverrides)[message.id];
+      return change?.conversationId === conversationId ? change : null;
+    }
+
+    function renderConversationMessages() {
+      const context = loadedMessageContext;
+      const table = getActiveTable();
+      if (!context || context.tableId !== table?.id || context.conversationId !== activeConversationId) return;
+      const visible = context.messages.filter(message => !messageOverrideFor(message, context.conversationId)?.hidden);
+      document.querySelector("#messageThread").innerHTML = visible.length ? visible.map(message => {
+        const change = messageOverrideFor(message, context.conversationId);
+        const editable = table.role === "master" && ["npc", "master"].includes(message.sender_role);
+        return `<article class="message-bubble ${message.sender_role === "player" ? "player" : "npc"}">
+          <small>${escapeHtml(message.sender_name)} · ${formatMessageTime(message.created_at)}</small>
+          <span class="message-text">${escapeHtml(change?.body ?? message.body)}</span>
+          ${editable ? `<div class="message-master-actions">
+            <button type="button" class="btn" data-edit-message="${escapeHtml(message.id)}">Editar</button>
+            <button type="button" class="btn danger" data-hide-message="${escapeHtml(message.id)}">Excluir</button>
+          </div>` : ""}
+        </article>`;
+      }).join("") : empty("Nenhuma mensagem ainda.");
+    }
+
+    function masterMessageContext(messageId) {
+      const table = getActiveTable();
+      const context = loadedMessageContext;
+      if (table?.role !== "master" || !table.onlineId || context?.tableId !== table.id || context.conversationId !== activeConversationId) return null;
+      const message = context.messages.find(item => item.id === messageId && ["npc", "master"].includes(item.sender_role));
+      if (!message || messageOverrideFor(message, context.conversationId)?.hidden) return null;
+      return { tableId: table.id, conversationId: context.conversationId, message };
+    }
+
+    function applyMasterMessageChange(context, change) {
+      const current = masterMessageContext(context.message.id);
+      if (!current || current.tableId !== context.tableId || current.conversationId !== context.conversationId) return false;
+      const table = getActiveTable();
+      const entry = { conversationId: context.conversationId, ...change };
+      const previous = data.messageOverrides;
+      const previousPending = table.pendingMessageChanges;
+      const previousCloudSave = table.pendingCloudSave;
+      data.messageOverrides = { ...normalizeMessageOverrides(previous), [context.message.id]: entry };
+      table.pendingMessageChanges = { ...normalizeMessageOverrides(previousPending), [context.message.id]: entry };
+      table.pendingCloudSave = true;
+      if (!persistLocalData()) {
+        data.messageOverrides = previous;
+        table.pendingMessageChanges = previousPending;
+        table.pendingCloudSave = previousCloudSave;
+        table.data = normalizeData(data);
+        setMessageStatus("Não foi possível salvar a alteração neste dispositivo", "error");
+        return false;
+      }
+      scheduleCloudTableSave();
+      renderConversationMessages();
+      setMessageStatus("Alteração salva neste dispositivo; sincronizando...", "local");
+      return true;
+    }
+
+    function openEditMessage(messageId) {
+      const context = masterMessageContext(messageId);
+      if (!context) return;
+      editingMessage = context;
+      const input = document.querySelector("#editMessageBody");
+      input.value = messageOverrideFor(context.message, context.conversationId)?.body ?? context.message.body;
+      document.querySelector("#editMessageError").classList.add("hidden");
+      document.querySelector("#editMessageModal").classList.remove("hidden");
+      input.focus();
+    }
+
+    function closeEditMessage() {
+      const id = editingMessage?.message.id;
+      editingMessage = null;
+      document.querySelector("#editMessageModal").classList.add("hidden");
+      if (id) document.querySelector(`[data-edit-message="${CSS.escape(id)}"]`)?.focus();
+    }
+
+    function saveEditedMessage() {
+      if (!editingMessage) return;
+      const body = document.querySelector("#editMessageBody").value.trim();
+      if (!body) {
+        document.querySelector("#editMessageError").textContent = "Escreva uma mensagem antes de salvar.";
+        document.querySelector("#editMessageError").classList.remove("hidden");
+        return;
+      }
+      if (applyMasterMessageChange(editingMessage, { body, hidden: false })) closeEditMessage();
+      else {
+        document.querySelector("#editMessageError").textContent = "Não foi possível salvar. Confira a conversa e o armazenamento do dispositivo e tente novamente.";
+        document.querySelector("#editMessageError").classList.remove("hidden");
+      }
+    }
+
+    async function hideMasterMessage(messageId) {
+      const context = masterMessageContext(messageId);
+      if (!context) return;
+      const confirmed = await askConfirm({
+        title: "Excluir mensagem da conversa?",
+        message: "Ela desaparecerá para o mestre e os jogadores, sem aviso de exclusão. As outras mensagens serão mantidas.",
+        confirmText: "Excluir mensagem", danger: true
+      });
+      if (confirmed) applyMasterMessageChange(context, { hidden: true });
     }

@@ -509,6 +509,7 @@
           owner: item.owner || ""
         })),
         allowedContacts: normalizeAllowedContacts(rawData.allowedContacts),
+        messageOverrides: normalizeMessageOverrides(rawData.messageOverrides),
         messageGroups: safeList(rawData.messageGroups).map(group => ({
           id: group.id || createId(),
           name: group.name || "Grupo sem nome",
@@ -621,5 +622,18 @@
       status.textContent = text;
       status.classList.toggle("local", state === "local");
       status.classList.toggle("error", state === "error");
+    }
+
+
+    function normalizeMessageOverrides(value) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+      return Object.fromEntries(Object.entries(value).filter(([id, change]) =>
+        id && change && typeof change === "object" && typeof change.conversationId === "string" &&
+        (change.hidden === true || typeof change.body === "string")
+      ).map(([id, change]) => [id, {
+        conversationId: change.conversationId,
+        hidden: change.hidden === true,
+        ...(typeof change.body === "string" ? { body: change.body } : {})
+      }]));
     }
 

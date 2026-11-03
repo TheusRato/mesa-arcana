@@ -670,6 +670,7 @@
           owner: item.owner || ""
         })),
         allowedContacts: normalizeAllowedContacts(rawData.allowedContacts),
+        messageOverrides: normalizeMessageOverrides(rawData.messageOverrides),
         messageGroups: safeList(rawData.messageGroups).map(group => ({
           id: group.id || createId(),
           name: group.name || "Grupo sem nome",
@@ -782,6 +783,19 @@
       status.textContent = text;
       status.classList.toggle("local", state === "local");
       status.classList.toggle("error", state === "error");
+    }
+
+
+    function normalizeMessageOverrides(value) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+      return Object.fromEntries(Object.entries(value).filter(([id, change]) =>
+        id && change && typeof change === "object" && typeof change.conversationId === "string" &&
+        (change.hidden === true || typeof change.body === "string")
+      ).map(([id, change]) => [id, {
+        conversationId: change.conversationId,
+        hidden: change.hidden === true,
+        ...(typeof change.body === "string" ? { body: change.body } : {})
+      }]));
     }
 
 
@@ -1276,14 +1290,9 @@
           .eq("conversation_id", conversationId)
           .order("created_at", { ascending: true });
         if (error) throw error;
-        thread.innerHTML = messages?.length
-          ? messages.map(message => `
-            <article class="message-bubble ${message.sender_role === "player" ? "player" : "npc"}">
-              <small>${escapeHtml(message.sender_name)} · ${formatMessageTime(message.created_at)}</small>
-              ${escapeHtml(message.body)}
-            </article>
-          `).join("")
-          : empty("Nenhuma mensagem ainda.");
+        if (getActiveTable() !== table || activeConversationId !== conversationId) return;
+        loadedMessageContext = { tableId: table.id, conversationId, messages: safeList(messages) };
+        renderConversationMessages();
         thread.scrollTop = thread.scrollHeight;
         if (!silent) setMessageStatus("Conversa atualizada", "synced");
       } catch (error) {
@@ -1588,6 +1597,112 @@
       }
     }
 
+    let loadedMessageContext = null;
+    let editingMessage = null;
+
+    function messageOverrideFor(message, conversationId) {
+      if (!["npc", "master"].includes(message.sender_role)) return null;
+      const change = normalizeMessageOverrides(data.messageOverrides)[message.id];
+      return change?.conversationId === conversationId ? change : null;
+    }
+
+    function renderConversationMessages() {
+      const context = loadedMessageContext;
+      const table = getActiveTable();
+      if (!context || context.tableId !== table?.id || context.conversationId !== activeConversationId) return;
+      const visible = context.messages.filter(message => !messageOverrideFor(message, context.conversationId)?.hidden);
+      document.querySelector("#messageThread").innerHTML = visible.length ? visible.map(message => {
+        const change = messageOverrideFor(message, context.conversationId);
+        const editable = table.role === "master" && ["npc", "master"].includes(message.sender_role);
+        return `<article class="message-bubble ${message.sender_role === "player" ? "player" : "npc"}">
+          <small>${escapeHtml(message.sender_name)} · ${formatMessageTime(message.created_at)}</small>
+          <span class="message-text">${escapeHtml(change?.body ?? message.body)}</span>
+          ${editable ? `<div class="message-master-actions">
+            <button type="button" class="btn" data-edit-message="${escapeHtml(message.id)}">Editar</button>
+            <button type="button" class="btn danger" data-hide-message="${escapeHtml(message.id)}">Excluir</button>
+          </div>` : ""}
+        </article>`;
+      }).join("") : empty("Nenhuma mensagem ainda.");
+    }
+
+    function masterMessageContext(messageId) {
+      const table = getActiveTable();
+      const context = loadedMessageContext;
+      if (table?.role !== "master" || !table.onlineId || context?.tableId !== table.id || context.conversationId !== activeConversationId) return null;
+      const message = context.messages.find(item => item.id === messageId && ["npc", "master"].includes(item.sender_role));
+      if (!message || messageOverrideFor(message, context.conversationId)?.hidden) return null;
+      return { tableId: table.id, conversationId: context.conversationId, message };
+    }
+
+    function applyMasterMessageChange(context, change) {
+      const current = masterMessageContext(context.message.id);
+      if (!current || current.tableId !== context.tableId || current.conversationId !== context.conversationId) return false;
+      const table = getActiveTable();
+      const entry = { conversationId: context.conversationId, ...change };
+      const previous = data.messageOverrides;
+      const previousPending = table.pendingMessageChanges;
+      const previousCloudSave = table.pendingCloudSave;
+      data.messageOverrides = { ...normalizeMessageOverrides(previous), [context.message.id]: entry };
+      table.pendingMessageChanges = { ...normalizeMessageOverrides(previousPending), [context.message.id]: entry };
+      table.pendingCloudSave = true;
+      if (!persistLocalData()) {
+        data.messageOverrides = previous;
+        table.pendingMessageChanges = previousPending;
+        table.pendingCloudSave = previousCloudSave;
+        table.data = normalizeData(data);
+        setMessageStatus("Não foi possível salvar a alteração neste dispositivo", "error");
+        return false;
+      }
+      scheduleCloudTableSave();
+      renderConversationMessages();
+      setMessageStatus("Alteração salva neste dispositivo; sincronizando...", "local");
+      return true;
+    }
+
+    function openEditMessage(messageId) {
+      const context = masterMessageContext(messageId);
+      if (!context) return;
+      editingMessage = context;
+      const input = document.querySelector("#editMessageBody");
+      input.value = messageOverrideFor(context.message, context.conversationId)?.body ?? context.message.body;
+      document.querySelector("#editMessageError").classList.add("hidden");
+      document.querySelector("#editMessageModal").classList.remove("hidden");
+      input.focus();
+    }
+
+    function closeEditMessage() {
+      const id = editingMessage?.message.id;
+      editingMessage = null;
+      document.querySelector("#editMessageModal").classList.add("hidden");
+      if (id) document.querySelector(`[data-edit-message="${CSS.escape(id)}"]`)?.focus();
+    }
+
+    function saveEditedMessage() {
+      if (!editingMessage) return;
+      const body = document.querySelector("#editMessageBody").value.trim();
+      if (!body) {
+        document.querySelector("#editMessageError").textContent = "Escreva uma mensagem antes de salvar.";
+        document.querySelector("#editMessageError").classList.remove("hidden");
+        return;
+      }
+      if (applyMasterMessageChange(editingMessage, { body, hidden: false })) closeEditMessage();
+      else {
+        document.querySelector("#editMessageError").textContent = "Não foi possível salvar. Confira a conversa e o armazenamento do dispositivo e tente novamente.";
+        document.querySelector("#editMessageError").classList.remove("hidden");
+      }
+    }
+
+    async function hideMasterMessage(messageId) {
+      const context = masterMessageContext(messageId);
+      if (!context) return;
+      const confirmed = await askConfirm({
+        title: "Excluir mensagem da conversa?",
+        message: "Ela desaparecerá para o mestre e os jogadores, sem aviso de exclusão. As outras mensagens serão mantidas.",
+        confirmText: "Excluir mensagem", danger: true
+      });
+      if (confirmed) applyMasterMessageChange(context, { hidden: true });
+    }
+
     function canAutoSaveCloud() {
       const activeTable = getActiveTable();
       return Boolean(activeTable && activeTable.role === "master" && activeTable.onlineId);
@@ -1742,6 +1857,7 @@
         const snapshot = JSON.parse(JSON.stringify(data));
         const pending = JSON.parse(JSON.stringify(activeTable.pendingPlayerVersions || {}));
         const pendingSessions = JSON.parse(JSON.stringify(activeTable.pendingSessions || {}));
+        const pendingMessages = JSON.parse(JSON.stringify(activeTable.pendingMessageChanges || {}));
         let nextData, savedRow;
         for (let attempt = 0; attempt < 5; attempt++) {
           const { data: remoteTable, error: readError } = await client
@@ -1750,6 +1866,10 @@
           nextData = activeTable.role === "master"
             ? await cloudDataForMaster(activeTable, snapshot)
             : mergePlayerWritableData(remoteTable.data || initialData, snapshot);
+          nextData.messageOverrides = {
+            ...normalizeMessageOverrides(remoteTable.data?.messageOverrides),
+            ...(activeTable.role === "master" ? normalizeMessageOverrides(pendingMessages) : {})
+          };
           nextData.sessions = mergePendingSessions(remoteTable.data?.sessions, snapshot.sessions, pendingSessions, activeTable.role, activeTable.playerName);
           nextData.players = mergePersonalCharacterVersions(
             remoteTable.data?.players, nextData.players, pending,
@@ -1765,9 +1885,14 @@
         if (!savedRow) throw new Error("A mesa está recebendo outras alterações. Tente salvar novamente; sua versão permanece neste dispositivo.");
         acknowledgePersonalCharacterVersions(activeTable, pending);
         acknowledgeSessionChanges(activeTable, pendingSessions);
+        acknowledgeMessageChanges(activeTable, pendingMessages);
         if (saveVersion === cloudChangeVersion) activeTable.pendingCloudSave = false;
         // Keep edits made while this request was in flight and incorporate other players' versions.
         if (getActiveTable() === activeTable) {
+          data.messageOverrides = {
+            ...nextData.messageOverrides,
+            ...normalizeMessageOverrides(activeTable.pendingMessageChanges)
+          };
           data.sessions = mergePendingSessions(nextData.sessions, data.sessions, activeTable.pendingSessions || {}, activeTable.role, activeTable.playerName);
           data.players = mergePersonalCharacterVersions(nextData.players, data.players, activeTable.pendingPlayerVersions || {});
           activeTable.data = normalizeData(data);
@@ -1801,6 +1926,7 @@
         masterVault: remoteData.masterVault,
         allowedContacts: remoteData.allowedContacts,
         messageGroups: remoteData.messageGroups,
+        messageOverrides: remoteData.messageOverrides,
         library: playerData.library
       });
     }
@@ -1946,6 +2072,15 @@
       window.clearTimeout(cloudSaveTimer);
       setSupabaseStatus(activeTable.role === "master" ? "Salvando na nuvem..." : "Enviando alteracoes...");
       cloudSaveTimer = window.setTimeout(saveOnlineTable, 1200);
+    }
+
+
+    function acknowledgeMessageChanges(table, uploaded) {
+      const pending = table.pendingMessageChanges || {};
+      for (const [id, change] of Object.entries(uploaded)) {
+        if (JSON.stringify(pending[id]) === JSON.stringify(change)) delete pending[id];
+      }
+      table.pendingMessageChanges = pending;
     }
 
 
@@ -4191,6 +4326,26 @@
         const focusable = [...event.currentTarget.querySelectorAll("button, input")]
           .filter(node => !node.disabled && node.getClientRects().length);
         const first = focusable[0], last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    });
+    document.querySelector("#messageThread").addEventListener("click", event => {
+      const button = event.target.closest("[data-edit-message], [data-hide-message]");
+      if (!button) return;
+      if (button.dataset.editMessage) openEditMessage(button.dataset.editMessage);
+      else hideMasterMessage(button.dataset.hideMessage);
+    });
+    document.querySelector("#cancelEditMessage").addEventListener("click", closeEditMessage);
+    document.querySelector("#saveEditedMessage").addEventListener("click", saveEditedMessage);
+    document.querySelector("#editMessageModal").addEventListener("click", event => {
+      if (event.target.id === "editMessageModal") closeEditMessage();
+    });
+    document.querySelector("#editMessageModal").addEventListener("keydown", event => {
+      if (event.key === "Escape") closeEditMessage();
+      if (event.key === "Tab") {
+        const first = document.querySelector("#editMessageBody");
+        const last = document.querySelector("#saveEditedMessage");
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
         if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
       }
