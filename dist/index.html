@@ -256,7 +256,7 @@
                 <button class="message-back" id="messageBackBtn" title="Voltar para conversas" aria-label="Voltar para conversas">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M15 18l-6-6 6-6"/></svg>
                 </button>
-                <div>
+                <div id="messageGroupHeader">
                   <h3 id="messageTitle">Nenhuma conversa aberta</h3>
                   <p id="messageIntro">Escolha um NPC para começar.</p>
                 </div>
@@ -966,6 +966,29 @@
         <button class="btn" id="cancelMasterNpc" type="button">Cancelar</button>
         <button class="btn primary" id="addMasterNpc" type="button">Salvar ficha</button>
         <button class="btn hidden" id="revealMasterNpc" type="button">Revelar aos jogadores</button>
+      </div>
+    </article>
+  </div>
+
+  <div class="modal-backdrop hidden" id="groupDetailsModal" role="dialog" aria-modal="true" aria-labelledby="groupDetailsTitle">
+    <article class="character-modal group-details-screen">
+      <div class="modal-head">
+        <div><h2 id="groupDetailsTitle">Integrantes do grupo</h2><p id="groupDetailsCount"></p></div>
+        <button class="btn" id="closeGroupDetails" type="button">Voltar à conversa</button>
+      </div>
+      <h3>Integrantes</h3>
+      <div id="groupMembersList" class="group-members-list"></div>
+      <div id="groupMemberControls" class="hidden">
+        <p class="group-history-note">Adicionar ou remover integrantes mantém as mensagens já existentes.</p>
+        <button class="btn primary" id="addGroupPeople" type="button" aria-expanded="false" aria-controls="groupAddPeoplePanel">Adicionar pessoas</button>
+        <div id="groupAddPeoplePanel" class="hidden">
+          <h3>Escolha quem adicionar</h3>
+          <div id="groupAvailablePeople" class="group-options"></div>
+          <div class="modal-actions">
+            <button class="btn" id="cancelAddGroupPeople" type="button">Cancelar</button>
+            <button class="btn primary" id="confirmAddGroupPeople" type="button">Adicionar selecionados</button>
+          </div>
+        </div>
       </div>
     </article>
   </div>

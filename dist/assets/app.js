@@ -1047,6 +1047,7 @@
         syncParticipantsFromCloud({ rerender: true });
       }
       const targets = getMessageTargets();
+      configureGroupHeader(null);
       renderMasterPlayerSwitch(null);
       app.classList.toggle("chat-open", messageChatOpen);
       document.body.classList.toggle("mobile-chat-open", messageChatOpen);
@@ -1124,6 +1125,7 @@
       document.querySelector("#messageIntro").textContent = table.role === "master"
         ? (activeTarget?.type === "group" ? "Escolha qual NPC vai responder neste grupo." : `Responder como ${activeTarget?.npcName || activeMessageNpc}.`)
         : `Enviar mensagem para ${activeTarget?.npcName || activeMessageNpc}.`;
+      configureGroupHeader(activeTarget);
       renderReplyAsSelector(activeTarget);
       document.querySelector("#openGroupModal").classList.toggle("hidden", table.role !== "master");
     }
@@ -1453,6 +1455,138 @@
       setMessageStatus("Grupo criado", "synced");
     }
 
+
+    let groupDetailsId = "";
+    let groupDetailsTableId = "";
+
+    function configureGroupHeader(target) {
+      const header = document.querySelector("#messageGroupHeader");
+      const isGroup = target?.type === "group";
+      header.classList.toggle("group-header-link", isGroup);
+      if (isGroup) {
+        header.setAttribute("role", "button");
+        header.setAttribute("tabindex", "0");
+        header.setAttribute("aria-label", `Ver integrantes de ${target.npcName}`);
+        header.setAttribute("aria-haspopup", "dialog");
+      } else {
+        ["role", "tabindex", "aria-label", "aria-haspopup"].forEach(name => header.removeAttribute(name));
+      }
+    }
+
+    function currentDetailsGroup() {
+      if (getActiveTable()?.id !== groupDetailsTableId) return null;
+      return safeList(data.messageGroups).find(group => group.id === groupDetailsId) || null;
+    }
+
+    function openGroupDetails() {
+      const target = getActiveMessageTarget();
+      if (target?.type !== "group") return;
+      groupDetailsId = target.groupId;
+      groupDetailsTableId = getActiveTable()?.id;
+      if (!currentDetailsGroup()) return;
+      closeAddGroupPeople();
+      renderGroupDetails();
+      document.querySelector("#groupDetailsModal").classList.remove("hidden");
+      document.querySelector("#closeGroupDetails").focus();
+    }
+
+    function closeGroupDetails() {
+      document.querySelector("#groupDetailsModal").classList.add("hidden");
+      groupDetailsId = "";
+      groupDetailsTableId = "";
+      document.querySelector("#messageGroupHeader").focus();
+    }
+
+    function renderGroupDetails() {
+      const group = currentDetailsGroup();
+      if (!group) { closeGroupDetails(); return; }
+      const master = getActiveTable()?.role === "master";
+      const members = [
+        ...safeList(group.npcIds).map(id => {
+          const npc = safeList(data.players).find(character => character.id === id);
+          return { type: "npc", value: id, name: npc?.character || npc?.name || "NPC indisponível", label: "NPC" };
+        }),
+        ...safeList(group.playerNames).map(name => ({ type: "player", value: name, name, label: "Jogador" }))
+      ];
+      document.querySelector("#groupDetailsTitle").textContent = group.name;
+      document.querySelector("#groupDetailsCount").textContent = `${members.length} integrante${members.length === 1 ? "" : "s"}`;
+      document.querySelector("#groupMembersList").innerHTML = members.length ? members.map(member => `
+        <div class="group-member-row">
+          <div><strong>${escapeHtml(member.name)}</strong><small>${member.label}</small></div>
+          ${master ? `<button type="button" class="btn danger" data-remove-group-member="${escapeHtml(member.value)}" data-member-type="${member.type}" aria-label="Remover ${escapeHtml(member.name)} do grupo">Remover</button>` : ""}
+        </div>
+      `).join("") : empty("Este grupo ainda não tem integrantes.");
+      document.querySelector("#groupMemberControls").classList.toggle("hidden", !master);
+    }
+
+    async function openAddGroupPeople() {
+      if (getActiveTable()?.role !== "master") return;
+      const openingGroupId = groupDetailsId;
+      const openingTableId = groupDetailsTableId;
+      await syncParticipantsFromCloud({ force: true });
+      if (openingGroupId !== groupDetailsId || openingTableId !== groupDetailsTableId || getActiveTable()?.role !== "master") return;
+      const group = currentDetailsGroup();
+      if (!group) return;
+      const available = [
+        ...allMessageContacts().filter(npc => !safeList(group.npcIds).includes(npc.npcId))
+          .map(npc => ({ type: "npc", value: npc.npcId, name: npc.npcName, label: "NPC" })),
+        ...playerSheetProfiles().filter(profile => !safeList(group.playerNames).includes(profile.name))
+          .map(profile => ({ type: "player", value: profile.name, name: profile.name, label: "Jogador" }))
+      ];
+      document.querySelector("#groupAvailablePeople").innerHTML = available.length ? available.map(person => `
+        <label class="group-option"><input type="checkbox" data-member-type="${person.type}" value="${escapeHtml(person.value)}"><span>${escapeHtml(person.name)} · ${person.label}</span></label>
+      `).join("") : empty("Todos os jogadores e NPCs disponíveis já estão no grupo.");
+      document.querySelector("#confirmAddGroupPeople").disabled = !available.length;
+      document.querySelector("#groupAddPeoplePanel").classList.remove("hidden");
+      document.querySelector("#addGroupPeople").setAttribute("aria-expanded", "true");
+      document.querySelector("#groupAvailablePeople input")?.focus();
+    }
+
+    function closeAddGroupPeople() {
+      document.querySelector("#groupAddPeoplePanel").classList.add("hidden");
+      document.querySelector("#addGroupPeople").setAttribute("aria-expanded", "false");
+    }
+
+    function updateGroupMembers(group, npcIds, playerNames) {
+      if (getActiveTable()?.role !== "master" || currentDetailsGroup() !== group) return false;
+      // Preserve the existing group ID and every cloud conversation/message record.
+      group.npcIds = [...new Set(npcIds)];
+      group.playerNames = [...new Set(playerNames)];
+      save();
+      renderMessagesView();
+      renderGroupDetails();
+      // Removing the selected player may select another conversation. Load its own history.
+      loadConversationMessages();
+      return true;
+    }
+
+    function addSelectedGroupPeople() {
+      if (getActiveTable()?.role !== "master") return;
+      const group = currentDetailsGroup();
+      if (!group) return;
+      const selected = [...document.querySelectorAll("#groupAvailablePeople input:checked")];
+      if (!selected.length) return;
+      const availableNpcIds = allMessageContacts().map(npc => npc.npcId);
+      const availablePlayerNames = playerSheetProfiles().map(profile => profile.name);
+      const npcIds = selected.filter(input => input.dataset.memberType === "npc" && availableNpcIds.includes(input.value)).map(input => input.value);
+      const playerNames = selected.filter(input => input.dataset.memberType === "player" && availablePlayerNames.includes(input.value)).map(input => input.value);
+      if (updateGroupMembers(group, [...safeList(group.npcIds), ...npcIds], [...safeList(group.playerNames), ...playerNames])) {
+        closeAddGroupPeople();
+        document.querySelector("#addGroupPeople").focus();
+      }
+    }
+
+    function removeGroupMember(type, value) {
+      if (getActiveTable()?.role !== "master") return;
+      const group = currentDetailsGroup();
+      if (!group || !["npc", "player"].includes(type)) return;
+      const npcIds = safeList(group.npcIds).filter(id => type !== "npc" || id !== value);
+      const playerNames = safeList(group.playerNames).filter(name => type !== "player" || name !== value);
+      if (updateGroupMembers(group, npcIds, playerNames)) {
+        closeAddGroupPeople();
+        document.querySelector("#closeGroupDetails").focus();
+      }
+    }
 
     function canAutoSaveCloud() {
       const activeTable = getActiveTable();
@@ -4032,6 +4166,34 @@
     });
     document.querySelector("#quickModal").addEventListener("click", event => {
       if (event.target.id === "quickModal") closeQuickModal(null);
+    });
+    document.querySelector("#messageGroupHeader").addEventListener("click", openGroupDetails);
+    document.querySelector("#messageGroupHeader").addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openGroupDetails();
+      }
+    });
+    document.querySelector("#closeGroupDetails").addEventListener("click", closeGroupDetails);
+    document.querySelector("#addGroupPeople").addEventListener("click", openAddGroupPeople);
+    document.querySelector("#cancelAddGroupPeople").addEventListener("click", closeAddGroupPeople);
+    document.querySelector("#confirmAddGroupPeople").addEventListener("click", addSelectedGroupPeople);
+    document.querySelector("#groupMembersList").addEventListener("click", event => {
+      const button = event.target.closest("[data-remove-group-member]");
+      if (button) removeGroupMember(button.dataset.memberType, button.dataset.removeGroupMember);
+    });
+    document.querySelector("#groupDetailsModal").addEventListener("click", event => {
+      if (event.target.id === "groupDetailsModal") closeGroupDetails();
+    });
+    document.querySelector("#groupDetailsModal").addEventListener("keydown", event => {
+      if (event.key === "Escape") closeGroupDetails();
+      if (event.key === "Tab") {
+        const focusable = [...event.currentTarget.querySelectorAll("button, input")]
+          .filter(node => !node.disabled && node.getClientRects().length);
+        const first = focusable[0], last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
     });
     document.querySelector("#messageBackBtn").addEventListener("click", closeMessageChat);
     document.querySelector("#openGroupModal").addEventListener("click", openGroupModal);

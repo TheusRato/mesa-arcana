@@ -131,6 +131,34 @@
     document.querySelector("#quickModal").addEventListener("click", event => {
       if (event.target.id === "quickModal") closeQuickModal(null);
     });
+    document.querySelector("#messageGroupHeader").addEventListener("click", openGroupDetails);
+    document.querySelector("#messageGroupHeader").addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openGroupDetails();
+      }
+    });
+    document.querySelector("#closeGroupDetails").addEventListener("click", closeGroupDetails);
+    document.querySelector("#addGroupPeople").addEventListener("click", openAddGroupPeople);
+    document.querySelector("#cancelAddGroupPeople").addEventListener("click", closeAddGroupPeople);
+    document.querySelector("#confirmAddGroupPeople").addEventListener("click", addSelectedGroupPeople);
+    document.querySelector("#groupMembersList").addEventListener("click", event => {
+      const button = event.target.closest("[data-remove-group-member]");
+      if (button) removeGroupMember(button.dataset.memberType, button.dataset.removeGroupMember);
+    });
+    document.querySelector("#groupDetailsModal").addEventListener("click", event => {
+      if (event.target.id === "groupDetailsModal") closeGroupDetails();
+    });
+    document.querySelector("#groupDetailsModal").addEventListener("keydown", event => {
+      if (event.key === "Escape") closeGroupDetails();
+      if (event.key === "Tab") {
+        const focusable = [...event.currentTarget.querySelectorAll("button, input")]
+          .filter(node => !node.disabled && node.getClientRects().length);
+        const first = focusable[0], last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    });
     document.querySelector("#messageBackBtn").addEventListener("click", closeMessageChat);
     document.querySelector("#openGroupModal").addEventListener("click", openGroupModal);
     document.querySelector("#closeGroupModal").addEventListener("click", closeGroupModal);

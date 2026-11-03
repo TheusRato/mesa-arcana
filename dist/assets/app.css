@@ -1810,6 +1810,22 @@
     }
 
 
+
+    #messageGroupHeader { flex: 1; min-width: 0; }
+    .group-header-link { cursor: pointer; border-radius: 6px; }
+    .group-header-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 5px; }
+    .group-members-list { display: grid; gap: 10px; }
+    .group-member-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+    .group-member-row > div { min-width: 0; overflow-wrap: anywhere; }
+    .group-member-row small { display: block; margin-top: 4px; color: var(--muted); }
+    .group-member-row .btn { flex-shrink: 0; }
+    .group-history-note { color: var(--muted); }
+    #groupAddPeoplePanel { margin-top: 18px; }
+    #groupDetailsModal .modal-head { align-items: flex-start; }
+    @media (max-width: 760px) {
+      #groupDetailsModal .group-details-screen { height: 100dvh; max-height: 100dvh; border-radius: 0; }
+    }
+
     .mobile-more-container { display: none; }
     @media (max-width: 980px) {
       .app {
