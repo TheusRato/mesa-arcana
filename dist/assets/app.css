@@ -1839,6 +1839,8 @@
     #editMessageModal { z-index: 35; }
     #editMessageBody { width: 100%; min-height: 150px; resize: vertical; }
 
+    .conversation-section-title { margin: 0; padding: 12px 14px 7px; font-size: .74rem; font-weight: 700; color: var(--muted); background: var(--surface-soft); letter-spacing: .03em; }
+
     .mobile-more-container { display: none; }
     @media (max-width: 980px) {
       .app {

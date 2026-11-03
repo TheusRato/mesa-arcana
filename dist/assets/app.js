@@ -1061,7 +1061,7 @@
       if (table?.role === "master" && table.onlineId) {
         syncParticipantsFromCloud({ rerender: true });
       }
-      const targets = getMessageTargets();
+      const targets = orderedMessageTargets(getMessageTargets(), table);
       configureGroupHeader(null);
       renderMasterPlayerSwitch(null);
       app.classList.toggle("chat-open", messageChatOpen);
@@ -1077,6 +1077,7 @@
         setMessageStatus("Sem mesa online", "error");
         return;
       }
+      syncMessageHistory();
       if (!targets.length) {
         messageChatOpen = false;
         app.classList.remove("chat-open");
@@ -1096,7 +1097,9 @@
       }
       const activeTarget = getActiveMessageTarget();
       renderMasterPlayerSwitch(activeTarget);
-      list.innerHTML = targets.map(target => `
+      list.innerHTML = targets.map((target, index) => `
+        ${index === 0 || messageTargetRank(targets[index - 1], table) !== messageTargetRank(target, table)
+          ? `<h4 class="conversation-section-title">${["Grupos", "Com histórico", "Sem histórico"][messageTargetRank(target, table)]}</h4>` : ""}
         <button class="conversation-card ${target.id === activeMessageTargetId ? "active" : ""}" data-message-target-id="${target.id}">
           <span class="contact-row">
             <span class="contact-copy">
@@ -1292,6 +1295,7 @@
           .order("created_at", { ascending: true });
         if (error) throw error;
         if (getActiveTable() !== table || activeConversationId !== conversationId) return;
+        if (safeList(messages).length) rememberMessageHistory(table, getActiveMessageTarget()?.conversationKey);
         loadedMessageContext = { tableId: table.id, conversationId, messages: safeList(messages) };
         renderConversationMessages();
         thread.scrollTop = thread.scrollHeight;
@@ -1727,6 +1731,65 @@
       openMessageMenuId = openMessageMenuId === messageId ? "" : messageId;
       renderConversationMessages();
       document.querySelector(`[data-message-menu="${CSS.escape(messageId)}"]`)?.focus();
+    }
+
+    const messageHistoryCache = new Map();
+
+    function messageHistoryState(table) {
+      if (!table?.id || !table.onlineId) return null;
+      const key = `${table.id}:${table.onlineId}`;
+      if (!messageHistoryCache.has(key)) messageHistoryCache.set(key, { keys: new Set(), checkedAt: 0, loading: false });
+      return messageHistoryCache.get(key);
+    }
+
+    function messageTargetRank(target, table) {
+      if (target.type === "group") return 0;
+      return messageHistoryState(table)?.keys.has(target.conversationKey) ? 1 : 2;
+    }
+
+    function orderedMessageTargets(targets, table) {
+      return [...targets].sort((a, b) => messageTargetRank(a, table) - messageTargetRank(b, table));
+    }
+
+    function rememberMessageHistory(table, conversationKey) {
+      const state = messageHistoryState(table);
+      if (!state || !conversationKey || state.keys.has(conversationKey)) return;
+      state.keys.add(conversationKey);
+      renderMessagesView();
+    }
+
+    async function syncMessageHistory() {
+      const table = getActiveTable();
+      const state = messageHistoryState(table);
+      if (!state || state.loading || (state.checkedAt && Date.now() - state.checkedAt < 10000)) return;
+      const client = getSupabaseClient();
+      if (!client) return;
+      state.loading = true;
+      state.checkedAt = Date.now();
+      const found = [];
+      try {
+        // Require a message instead of treating an opened, empty conversation as history.
+        // Paginate conversations without downloading message bodies or creating threads.
+        const pageSize = 500;
+        for (let offset = 0; ; offset += pageSize) {
+          const { data: rows, error } = await client.from("mesa_arcana_conversations")
+            .select("npc_name,mesa_arcana_messages!inner(id)")
+            .limit(1, { foreignTable: "mesa_arcana_messages" })
+            .eq("table_id", table.onlineId).order("id", { ascending: true }).range(offset, offset + pageSize - 1);
+          if (error) throw error;
+          for (const row of safeList(rows)) {
+            if (safeList(row.mesa_arcana_messages).length > 0) found.push(row.npc_name);
+          }
+          if (safeList(rows).length < pageSize) break;
+        }
+        const changed = found.some(key => !state.keys.has(key));
+        found.forEach(key => state.keys.add(key));
+        if (changed && getActiveTable() === table) renderMessagesView();
+      } catch (error) {
+        console.warn("Não foi possível ordenar contatos pelo histórico.", error);
+      } finally {
+        state.loading = false;
+      }
     }
 
     function canAutoSaveCloud() {
