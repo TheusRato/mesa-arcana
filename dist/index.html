@@ -662,6 +662,8 @@
   <div class="modal-backdrop hidden" id="editMessageModal" role="dialog" aria-modal="true" aria-labelledby="editMessageTitle">
     <article class="character-modal app-dialog">
       <div class="modal-head"><h2 id="editMessageTitle">Editar mensagem</h2></div>
+      <label class="app-dialog-form">Remetente<input id="editMessageSender" list="editMessageSenderOptions" placeholder="Nome de quem enviou" autocomplete="off"></label>
+      <datalist id="editMessageSenderOptions"></datalist>
       <label class="app-dialog-form">Mensagem<textarea id="editMessageBody" rows="6"></textarea></label>
       <p id="editMessageError" class="hidden" role="alert"></p>
       <div class="modal-actions">

@@ -134,3 +134,32 @@ test('Cloud upload merges distinct master edits with the latest remote state and
   assert.equal(f.table.pendingCloudSave, false);
   assert.deepEqual(clone(f.table.pendingMessageChanges), {});
 });
+
+test('Master can change sender, reopen the saved name, and players see it after normalization', () => {
+  const f = fixture();
+  f.scope.openEditMessage('n1');
+  assert.equal(f.node('#editMessageSender').value, 'Isaac');
+  f.node('#editMessageSender').value = '  Samira <teste>  ';
+  f.scope.saveEditedMessage();
+  f.scope.data = f.scope.normalizeData(f.scope.data);
+  f.scope.openEditMessage('n1');
+  assert.equal(f.node('#editMessageSender').value, 'Samira <teste>');
+  assert.equal(f.node('#editMessageBody').value, 'A porta está aberta.');
+  f.table.role = 'player';
+  f.scope.renderConversationMessages();
+  assert.match(f.node('#messageThread').innerHTML, /Samira &lt;teste>/);
+  assert.doesNotMatch(f.node('#messageThread').innerHTML, /data-message-menu=/);
+  assert.equal(f.messages[0].sender_name, 'Isaac');
+});
+
+test('An empty sender cannot be saved and a player cannot change a sender', () => {
+  const f = fixture();
+  f.scope.openEditMessage('n1');
+  f.node('#editMessageSender').value = '  ';
+  f.scope.saveEditedMessage();
+  assert.equal(f.saves(), 0);
+  const context = f.scope.masterMessageContext('n1');
+  f.table.role = 'player';
+  assert.equal(f.scope.applyMasterMessageChange(context, { body: 'x', senderName: 'Other', hidden: false }), false);
+  assert.equal(f.saves(), 0);
+});

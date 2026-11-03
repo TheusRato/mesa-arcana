@@ -1,4 +1,4 @@
-const CACHE_NAME = "mesa-arcana-v93";
+const CACHE_NAME = "mesa-arcana-v94";
 const APP_SHELL = [
   "./",
   "./index.html",

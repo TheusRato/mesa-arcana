@@ -185,7 +185,7 @@
     document.querySelector("#editMessageModal").addEventListener("keydown", event => {
       if (event.key === "Escape") closeEditMessage();
       if (event.key === "Tab") {
-        const first = document.querySelector("#editMessageBody");
+        const first = document.querySelector("#editMessageSender");
         const last = document.querySelector("#saveEditedMessage");
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
         if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }

@@ -633,7 +633,8 @@
       ).map(([id, change]) => [id, {
         conversationId: change.conversationId,
         hidden: change.hidden === true,
-        ...(typeof change.body === "string" ? { body: change.body } : {})
+        ...(typeof change.body === "string" ? { body: change.body } : {}),
+        ...(typeof change.senderName === "string" && change.senderName.trim() ? { senderName: change.senderName.trim() } : {})
       }]));
     }
 

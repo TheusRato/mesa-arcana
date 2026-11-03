@@ -794,7 +794,8 @@
       ).map(([id, change]) => [id, {
         conversationId: change.conversationId,
         hidden: change.hidden === true,
-        ...(typeof change.body === "string" ? { body: change.body } : {})
+        ...(typeof change.body === "string" ? { body: change.body } : {}),
+        ...(typeof change.senderName === "string" && change.senderName.trim() ? { senderName: change.senderName.trim() } : {})
       }]));
     }
 
@@ -1616,7 +1617,7 @@
         const change = messageOverrideFor(message, context.conversationId);
         const editable = table.role === "master" && ["npc", "master"].includes(message.sender_role);
         return `<article class="message-bubble ${message.sender_role === "player" ? "player" : "npc"} ${editable ? "has-message-menu" : ""}">
-          <small>${escapeHtml(message.sender_name)} · ${formatMessageTime(message.created_at)}</small>
+          <small>${escapeHtml(change?.senderName ?? message.sender_name)} · ${formatMessageTime(message.created_at)}</small>
           <span class="message-text">${escapeHtml(change?.body ?? message.body)}</span>
           ${editable ? `<div class="message-master-menu">
             <button type="button" class="message-menu-toggle" data-message-menu="${escapeHtml(message.id)}" aria-label="Opções da mensagem" aria-expanded="${openMessageMenuId === message.id}" aria-controls="message-actions-${escapeHtml(message.id)}">⋮</button>
@@ -1668,7 +1669,14 @@
       if (!context) return;
       editingMessage = context;
       const input = document.querySelector("#editMessageBody");
-      input.value = messageOverrideFor(context.message, context.conversationId)?.body ?? context.message.body;
+      const change = messageOverrideFor(context.message, context.conversationId);
+      input.value = change?.body ?? context.message.body;
+      document.querySelector("#editMessageSender").value = change?.senderName ?? context.message.sender_name;
+      const names = [...new Set([context.message.sender_name, change?.senderName,
+        ...safeList(data.players).map(person => person.character || person.name),
+        ...safeList(data.playerProfiles).map(profile => profile.name)
+      ].filter(Boolean))];
+      document.querySelector("#editMessageSenderOptions").innerHTML = names.map(name => `<option value="${escapeHtml(name)}"></option>`).join("");
       document.querySelector("#editMessageError").classList.add("hidden");
       document.querySelector("#editMessageModal").classList.remove("hidden");
       input.focus();
@@ -1684,12 +1692,13 @@
     function saveEditedMessage() {
       if (!editingMessage) return;
       const body = document.querySelector("#editMessageBody").value.trim();
-      if (!body) {
-        document.querySelector("#editMessageError").textContent = "Escreva uma mensagem antes de salvar.";
+      const senderName = document.querySelector("#editMessageSender").value.trim();
+      if (!body || !senderName) {
+        document.querySelector("#editMessageError").textContent = !senderName ? "Preencha o nome do remetente." : "Escreva uma mensagem antes de salvar.";
         document.querySelector("#editMessageError").classList.remove("hidden");
         return;
       }
-      if (applyMasterMessageChange(editingMessage, { body, hidden: false })) closeEditMessage();
+      if (applyMasterMessageChange(editingMessage, { body, senderName, hidden: false })) closeEditMessage();
       else {
         document.querySelector("#editMessageError").textContent = "Não foi possível salvar. Confira a conversa e o armazenamento do dispositivo e tente novamente.";
         document.querySelector("#editMessageError").classList.remove("hidden");
@@ -4373,7 +4382,7 @@
     document.querySelector("#editMessageModal").addEventListener("keydown", event => {
       if (event.key === "Escape") closeEditMessage();
       if (event.key === "Tab") {
-        const first = document.querySelector("#editMessageBody");
+        const first = document.querySelector("#editMessageSender");
         const last = document.querySelector("#saveEditedMessage");
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
         if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
