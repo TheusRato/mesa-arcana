@@ -160,10 +160,22 @@
       }
     });
     document.querySelector("#messageThread").addEventListener("click", event => {
+      const toggle = event.target.closest("[data-message-menu]");
+      if (toggle) { toggleMessageMenu(toggle.dataset.messageMenu); return; }
       const button = event.target.closest("[data-edit-message], [data-hide-message]");
       if (!button) return;
+      closeMessageMenu();
       if (button.dataset.editMessage) openEditMessage(button.dataset.editMessage);
       else hideMasterMessage(button.dataset.hideMessage);
+    });
+    document.addEventListener("click", event => {
+      if (!event.target.closest(".message-master-menu")) closeMessageMenu();
+    });
+    document.addEventListener("keydown", event => {
+      if (event.key !== "Escape" || !openMessageMenuId) return;
+      const messageId = openMessageMenuId;
+      closeMessageMenu();
+      document.querySelector(`[data-message-menu="${CSS.escape(messageId)}"]`)?.focus();
     });
     document.querySelector("#cancelEditMessage").addEventListener("click", closeEditMessage);
     document.querySelector("#saveEditedMessage").addEventListener("click", saveEditedMessage);

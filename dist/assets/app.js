@@ -1599,6 +1599,7 @@
 
     let loadedMessageContext = null;
     let editingMessage = null;
+    let openMessageMenuId = "";
 
     function messageOverrideFor(message, conversationId) {
       if (!["npc", "master"].includes(message.sender_role)) return null;
@@ -1614,12 +1615,15 @@
       document.querySelector("#messageThread").innerHTML = visible.length ? visible.map(message => {
         const change = messageOverrideFor(message, context.conversationId);
         const editable = table.role === "master" && ["npc", "master"].includes(message.sender_role);
-        return `<article class="message-bubble ${message.sender_role === "player" ? "player" : "npc"}">
+        return `<article class="message-bubble ${message.sender_role === "player" ? "player" : "npc"} ${editable ? "has-message-menu" : ""}">
           <small>${escapeHtml(message.sender_name)} · ${formatMessageTime(message.created_at)}</small>
           <span class="message-text">${escapeHtml(change?.body ?? message.body)}</span>
-          ${editable ? `<div class="message-master-actions">
-            <button type="button" class="btn" data-edit-message="${escapeHtml(message.id)}">Editar</button>
-            <button type="button" class="btn danger" data-hide-message="${escapeHtml(message.id)}">Excluir</button>
+          ${editable ? `<div class="message-master-menu">
+            <button type="button" class="message-menu-toggle" data-message-menu="${escapeHtml(message.id)}" aria-label="Opções da mensagem" aria-expanded="${openMessageMenuId === message.id}" aria-controls="message-actions-${escapeHtml(message.id)}">⋮</button>
+            <div id="message-actions-${escapeHtml(message.id)}" class="message-master-actions ${openMessageMenuId === message.id ? "" : "hidden"}">
+              <button type="button" class="btn" data-edit-message="${escapeHtml(message.id)}">Editar</button>
+              <button type="button" class="btn danger" data-hide-message="${escapeHtml(message.id)}">Excluir</button>
+            </div>
           </div>` : ""}
         </article>`;
       }).join("") : empty("Nenhuma mensagem ainda.");
@@ -1674,7 +1678,7 @@
       const id = editingMessage?.message.id;
       editingMessage = null;
       document.querySelector("#editMessageModal").classList.add("hidden");
-      if (id) document.querySelector(`[data-edit-message="${CSS.escape(id)}"]`)?.focus();
+      if (id) document.querySelector(`[data-message-menu="${CSS.escape(id)}"]`)?.focus();
     }
 
     function saveEditedMessage() {
@@ -1701,6 +1705,19 @@
         confirmText: "Excluir mensagem", danger: true
       });
       if (confirmed) applyMasterMessageChange(context, { hidden: true });
+    }
+
+    function closeMessageMenu() {
+      if (!openMessageMenuId) return;
+      openMessageMenuId = "";
+      renderConversationMessages();
+    }
+
+    function toggleMessageMenu(messageId) {
+      if (!masterMessageContext(messageId)) return;
+      openMessageMenuId = openMessageMenuId === messageId ? "" : messageId;
+      renderConversationMessages();
+      document.querySelector(`[data-message-menu="${CSS.escape(messageId)}"]`)?.focus();
     }
 
     function canAutoSaveCloud() {
@@ -4331,10 +4348,22 @@
       }
     });
     document.querySelector("#messageThread").addEventListener("click", event => {
+      const toggle = event.target.closest("[data-message-menu]");
+      if (toggle) { toggleMessageMenu(toggle.dataset.messageMenu); return; }
       const button = event.target.closest("[data-edit-message], [data-hide-message]");
       if (!button) return;
+      closeMessageMenu();
       if (button.dataset.editMessage) openEditMessage(button.dataset.editMessage);
       else hideMasterMessage(button.dataset.hideMessage);
+    });
+    document.addEventListener("click", event => {
+      if (!event.target.closest(".message-master-menu")) closeMessageMenu();
+    });
+    document.addEventListener("keydown", event => {
+      if (event.key !== "Escape" || !openMessageMenuId) return;
+      const messageId = openMessageMenuId;
+      closeMessageMenu();
+      document.querySelector(`[data-message-menu="${CSS.escape(messageId)}"]`)?.focus();
     });
     document.querySelector("#cancelEditMessage").addEventListener("click", closeEditMessage);
     document.querySelector("#saveEditedMessage").addEventListener("click", saveEditedMessage);
